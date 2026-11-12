@@ -2,8 +2,16 @@ export function getLocalDateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+export function getHungerPhase(date, lunchEatenToday = false) {
+  if (lunchEatenToday) return 'lunchDone';
+  const minutesSinceMidnight = date.getHours() * 60 + date.getMinutes();
+  if (minutesSinceMidnight < 7 * 60) return 'beforeStart';
+  if (minutesSinceMidnight >= 16 * 60) return 'lunchDone';
+  return 'active';
+}
+
 export function getHungerLevel(date, lunchEatenToday = false) {
-  if (lunchEatenToday) return 0;
+  if (getHungerPhase(date, lunchEatenToday) !== 'active') return 0;
   const minutesSinceMidnight = date.getHours() * 60 + date.getMinutes();
   const rampStart = 7 * 60;
   const fullHunger = 13 * 60;

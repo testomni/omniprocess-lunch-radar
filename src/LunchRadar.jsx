@@ -30,7 +30,7 @@ import {
   getDirectionsUrl,
   getMenuSearchUrl,
 } from './location.js';
-import { getHungerLevel, getLocalDateKey } from './hunger.js';
+import { getHungerLevel, getHungerPhase, getLocalDateKey } from './hunger.js';
 import { fetchNearbyGooglePlaces, isGooglePlaceClosed, matchGooglePlace } from './googlePlaces.js';
 import { getLunchWeatherAdvice } from './weather.js';
 
@@ -238,7 +238,9 @@ function LunchRadar() {
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState(false);
   const text = translations[language];
-  const hasEatenLunchToday = lunchEatenDate === getLocalDateKey(currentTime);
+  const manualLunchEaten = lunchEatenDate === getLocalDateKey(currentTime);
+  const hungerPhase = getHungerPhase(currentTime, manualLunchEaten);
+  const hasEatenLunchToday = hungerPhase === 'lunchDone';
   const hungerLevel = getHungerLevel(currentTime, hasEatenLunchToday);
   const isDangerous = hungerLevel === 100;
   const radarTime = currentTime.toLocaleTimeString(text.locale, {
@@ -570,9 +572,11 @@ function LunchRadar() {
                   >
                     <span style={{ width: `${hungerLevel}%` }} />
                   </div>
-                  <p aria-live="polite">{hasEatenLunchToday
-                    ? text.lunchEatenStatus
-                    : isDangerous ? text.dangerMessage : text.hungerStatus(hungerLevel)}</p>
+                  <p aria-live="polite">{hungerPhase === 'beforeStart'
+                    ? text.hungerBeforeStart
+                    : hasEatenLunchToday
+                      ? text.lunchEatenStatus
+                      : isDangerous ? text.dangerMessage : text.hungerStatus(hungerLevel)}</p>
                 </div>
                 <button
                   aria-pressed={hasEatenLunchToday}

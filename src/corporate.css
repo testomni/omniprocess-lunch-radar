@@ -40,7 +40,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .brand-logo-link { display: flex; width: 84px; flex: 0 0 84px; align-items: center; justify-content: center; padding: 0; line-height: 0; }
 .brand-logo { display: block; width: 100%; height: auto; }
 .brand-product { color: #a9beb0; font-size: 11px; font-weight: 650; letter-spacing: .9px; text-transform: uppercase; }
-.language-toolbar { position: absolute; z-index: 2; top: 18px; left: 50%; display: flex; justify-content: center; width: max-content; margin: 0; transform: translateX(-50%); }
+.language-toolbar { position: absolute; z-index: 2; top: 560px; left: 50%; display: flex; justify-content: center; width: max-content; margin: 0; transform: translateX(-50%); }
 .language-toggle { display: inline-flex; gap: 3px; padding: 3px; border: 1px solid rgb(255 255 255 / 28%); border-radius: 7px; background: rgb(7 42 21 / 32%); }
 .language-toggle button { min-width: 82px; min-height: 34px; padding: 0 12px; border: 0; border-radius: 5px; background: transparent; color: #e5f2e7; font-size: 12px; font-weight: 600; transition: background .18s ease, color .18s ease, box-shadow .18s ease; }
 .language-toggle button[aria-pressed='true'] { background: #fff; color: var(--forest); box-shadow: 0 1px 3px rgb(22 51 31 / 16%); }
@@ -248,6 +248,7 @@ h1, h2, h3, p { margin: 0; }
   .app-shell { width: min(100% - 48px, 760px); }
   .topbar-inner, .hero-inner { width: min(100% - 48px, 760px); }
   .hero-inner { gap: 28px; }
+  .language-toolbar { top: auto; bottom: 46px; }
   .lunch-results-layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .map-section { position: static; padding-top: 24px; }
   .restaurant-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }

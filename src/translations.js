@@ -9,6 +9,7 @@ export const translations = {
     cuisineUnknown: 'Kök ej angivet',
     hungerLabel: 'Hungrighetsbarometer',
     hungerValue: (value) => `${value}% hungrig`,
+    hungerBeforeStart: 'Barometern startar kl. 07:00.',
     hungerStatus: (value) => value < 25
       ? 'Lugnt än så länge.'
       : value < 50
@@ -18,8 +19,8 @@ export const translations = {
           : 'Hungern börjar bli akut.',
     dangerMessage: 'Nu måste du gå och äta lunch – det börjar bli farligt!',
     lunchEatenButton: 'Ätit lunch idag',
-    lunchEatenDoneButton: 'Lugn, jag har redan ätit lunch!',
-    lunchEatenStatus: 'Lunchen är avklarad. Barometern startar om i morgon.',
+    lunchEatenDoneButton: 'Lugn, jag har redan ätit lunch',
+    lunchEatenStatus: 'Lunchen är avklarad. Barometern startar om kl. 07:00 i morgon.',
     radarSystem: 'LUNCHSYSTEM / 01',
     radarTitle: 'Lunchradar',
     radarLive: 'LIVE',
@@ -161,6 +162,7 @@ export const translations = {
     cuisineUnknown: 'Cuisine not specified',
     hungerLabel: 'Hunger barometer',
     hungerValue: (value) => `${value}% hungry`,
+    hungerBeforeStart: 'The barometer starts at 07:00.',
     hungerStatus: (value) => value < 25
       ? 'Still plenty of time.'
       : value < 50
@@ -170,8 +172,8 @@ export const translations = {
           : 'Hunger is getting serious.',
     dangerMessage: 'You must go eat lunch now — it’s getting dangerous!',
     lunchEatenButton: 'Lunch eaten today',
-    lunchEatenDoneButton: 'Relax, I already had lunch!',
-    lunchEatenStatus: 'Lunch is done. The barometer starts again tomorrow.',
+    lunchEatenDoneButton: 'Relax, I already had lunch',
+    lunchEatenStatus: 'Lunch is done. The barometer resets at 07:00 tomorrow.',
     radarSystem: 'LUNCH SYSTEM / 01',
     radarTitle: 'Live lunch radar',
     radarLive: 'LIVE',
