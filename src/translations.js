@@ -3,7 +3,7 @@ export const translations = {
     locale: 'sv-SE',
     pageTitle: 'OmniLunchRadar | Lunchradarn',
     productName: 'Lunchradarn',
-    description: 'Hitta lunchrestauranger nära din plats.',
+    description: 'Hitta lunchrestauranger nära dig.',
     languageLabel: 'Språk / Language',
     brandLabel: 'OmniProcess Lunchradarn',
     cuisineUnknown: 'Kök ej angivet',
