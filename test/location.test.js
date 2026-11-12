@@ -75,10 +75,11 @@ test('requests named nearby places with tags and center coordinates', async () =
 
   try {
     const restaurants = await findNearbyRestaurants(origin);
-    const query = new URLSearchParams(request.options.body).get('data');
+    const requestUrl = new URL(request.url);
 
-    assert.equal(request.url, 'https://overpass-api.de/api/interpreter');
-    assert.equal(request.options.method, 'POST');
+    assert.equal(requestUrl.origin + requestUrl.pathname, 'https://overpass.openstreetmap.fr/api/interpreter');
+    assert.equal(request.options, undefined);
+    const query = requestUrl.searchParams.get('data');
     assert.match(query, /nwr\(around:1200,59\.35,18\.06\)/);
     assert.match(query, /out tags center;/);
     assert.equal(restaurants[0].name, 'Test restaurant');

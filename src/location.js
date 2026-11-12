@@ -94,11 +94,9 @@ export async function findNearbyRestaurants(origin) {
     ');',
     'out tags center;',
   ].join('\n');
-  const response = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-    body: new URLSearchParams({ data: query }),
-  });
+  const requestUrl = new URL('https://overpass.openstreetmap.fr/api/interpreter');
+  requestUrl.searchParams.set('data', query);
+  const response = await fetch(requestUrl);
   if (!response.ok) throw new Error('Nearby restaurant request failed');
 
   const payload = await response.json();

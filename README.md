@@ -1,6 +1,6 @@
 # OmniLunchRadar
 
-A responsive lunch finder built with React and Vite. With browser location access, the app finds nearby lunch spots from OpenStreetMap within 1.2 km, and uses the same location for the weather forecast and map. If location access is unavailable, it falls back to the OmniProcess office in Bromma and its curated restaurant list in [`src/data/restaurants.json`](src/data/restaurants.json). Nearby restaurant data is provided by the [OpenStreetMap Overpass API](https://overpass-api.de/); please verify opening hours and restaurant details before visiting.
+A responsive lunch finder built with React and Vite. With browser location access, the app finds nearby lunch spots from OpenStreetMap within 1.2 km, and uses the same location for the weather forecast and map. If location access is unavailable, it falls back to the OmniProcess office in Bromma and its curated restaurant list in [`src/data/restaurants.json`](src/data/restaurants.json). Nearby restaurant data is provided by the [OpenStreetMap Overpass API](https://overpass.openstreetmap.fr/); please verify opening hours and restaurant details before visiting.
 
 Distances are straight-line estimates and walking times are approximate. Price and dietary details are left unspecified when they are not available in the map data. Browser location access requires permission and a secure connection. With permission, coordinates are sent to the weather and OpenStreetMap services to retrieve local forecasts and restaurant results.
 
