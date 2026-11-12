@@ -69,6 +69,20 @@ function getRestaurantImage(tags, cuisine) {
   return fallbackRestaurantImages.default;
 }
 
+function inferCuisine(name, tags) {
+  const nameText = name.toLowerCase();
+  if (/sushi|japanese|ramen/.test(nameText)) return ['Japanese'];
+  if (/thai/.test(nameText)) return ['Thai'];
+  if (/indian|goa|curry/.test(nameText)) return ['Indian'];
+  if (/pizza|pizzeria/.test(nameText)) return ['Pizza'];
+  if (/burger|hamburger/.test(nameText)) return ['American'];
+  if (/chinese|wok/.test(nameText)) return ['Asian'];
+  if (tags.amenity === 'cafe') return ['Cafe'];
+  if (tags.amenity === 'fast_food') return ['Fast food'];
+  if (tags.amenity === 'food_court') return ['Food court'];
+  return [];
+}
+
 function getLunchPrice(tags, amenity, cuisine) {
   const taggedPrice = String(tags['price:meal'] ?? tags.price_range ?? tags.charge ?? '')
     .match(/\d+(?:[.,]\d+)?/g)
@@ -99,11 +113,12 @@ function toRestaurant(element, origin) {
       tags['addr:city'],
     ].filter(Boolean).join(', ')
     || '';
-  const cuisine = (tags.cuisine ?? '')
+  const taggedCuisine = (tags.cuisine ?? tags['cuisine:en'] ?? tags['cuisine:sv'] ?? '')
     .split(/[;,]/)
     .map((item) => item.trim())
     .filter(Boolean)
     .map(titleCase);
+  const cuisine = taggedCuisine.length ? taggedCuisine : inferCuisine(tags.name, tags);
   const imageUrl = getRestaurantImage(tags, cuisine);
   const route = [
     `${origin.latitude},${origin.longitude}`,
@@ -124,7 +139,10 @@ function toRestaurant(element, origin) {
     vegetarian: ['yes', 'only'].includes(tags['diet:vegetarian']),
     vegan: ['yes', 'only'].includes(tags['diet:vegan']),
     takeaway: tags.takeaway === 'yes' || tags['takeaway:yes'] === 'yes',
-    menuUrl: getExternalUrl(tags.menu ?? tags['contact:menu']),
+    menuUrl: getExternalUrl(tags.menu)
+      ?? getExternalUrl(tags['menu:url'])
+      ?? getExternalUrl(tags['contact:menu']),
+    websiteUrl: getExternalUrl(tags.website ?? tags['contact:website'] ?? tags.url),
     directionsUrl: `https://www.openstreetmap.org/directions?engine=fossgis_valhalla_foot&route=${encodeURIComponent(route)}`,
   };
 }

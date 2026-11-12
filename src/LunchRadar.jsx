@@ -27,8 +27,10 @@ import { getCuisineName, getRestaurantName, translations } from './translations.
 import { officeCoordinates } from './config.js';
 import { findNearbyRestaurants, getDirectionsUrl } from './location.js';
 import { getHungerLevel, getLocalDateKey } from './hunger.js';
+import { fetchNearbyGooglePlaces, matchGooglePlace } from './googlePlaces.js';
 
 const priceOptions = ['', '100', '125', '150', '175', '200', '250'];
+const googlePlacesApiKey = import.meta.env.VITE_GOOGLE_PLACES_API_KEY ?? '';
 
 function formatDate(value, options, locale) {
   return new Date(`${value}T12:00:00`).toLocaleDateString(locale, options);
@@ -41,6 +43,32 @@ function getRadarPosition(restaurant, location) {
   const northMeters = (restaurant.latitude - location.latitude) * metersPerDegree;
   const position = (meters) => Math.min(94, Math.max(6, 50 + (meters / 1200) * 44));
   return { left: `${position(eastMeters)}%`, top: `${position(-northMeters)}%` };
+}
+
+function getGoogleCuisine(place) {
+  const placeTypes = [
+    place?.primaryTypeDisplayName?.text,
+    ...(place?.types ?? []),
+  ].filter(Boolean).join(' ').toLowerCase();
+  const cuisineTypes = [
+    [/sushi|japanese|ramen/, 'Japanese'],
+    [/thai/, 'Thai'],
+    [/indian/, 'Indian'],
+    [/chinese|asian/, 'Asian'],
+    [/italian|pizza/, 'Italian'],
+    [/mexican/, 'Mexican'],
+    [/burger|american/, 'American'],
+    [/cafe|coffee/, 'Cafe'],
+    [/fast.food/, 'Fast food'],
+    [/restaurant|food.court/, 'Restaurant'],
+  ];
+
+  return cuisineTypes.find(([pattern]) => pattern.test(placeTypes))?.[1] ?? '';
+}
+
+function getGoogleMapsUrl(place) {
+  return place.googleMapsUri
+    ?? `https://www.google.com/maps/search/?api=1&query_place_id=${encodeURIComponent(place.id)}`;
 }
 
 function getWeatherIcon(symbolCode, size = 24) {
@@ -77,6 +105,8 @@ function DietFilter({ checked, label, onChange, icon: Icon }) {
 }
 
 function RestaurantCard({ restaurant, location, picked, highlighted, onHighlightChange, text }) {
+  const googlePlace = restaurant.googlePlace;
+  const googleMapsUrl = googlePlace ? getGoogleMapsUrl(googlePlace) : '';
   return (
     <article
       className={`restaurant-card${picked ? ' is-picked' : ''}${highlighted ? ' is-map-highlighted' : ''}`}
@@ -94,6 +124,13 @@ function RestaurantCard({ restaurant, location, picked, highlighted, onHighlight
         ) : (
           <span aria-hidden="true" className="image-placeholder"><Utensils size={30} /></span>
         )}
+        {restaurant.googlePhotoAttributions?.map((attribution) => (
+          <span className="photo-attribution" key={`${attribution.displayName}-${attribution.uri ?? ''}`}>
+            {attribution.uri ? (
+              <a href={attribution.uri} rel="noreferrer" target="_blank">{attribution.displayName}</a>
+            ) : attribution.displayName}
+          </span>
+        ))}
         <span className="walk-badge"><Clock3 size={14} /> {restaurant.walkingTimeMinutes == null ? text.walkingUnknown : text.walkingMinutes(restaurant.walkingTimeMinutes)}</span>
         {picked && <span className="picked-badge"><Sparkles size={14} /> {text.picked}</span>}
         <span className="cuisine-badge">{restaurant.cuisine.length
@@ -119,6 +156,38 @@ function RestaurantCard({ restaurant, location, picked, highlighted, onHighlight
           )}
         </div>
 
+        {googlePlace && (
+          <div className="google-review-panel">
+            <div className="google-review-heading">
+              <strong>{googlePlace.rating == null
+                ? text.googleRatingUnavailable
+                : `★ ${googlePlace.rating.toLocaleString(text.locale, { maximumFractionDigits: 1 })}`}</strong>
+              {googlePlace.userRatingCount != null && <span>{text.googleReviewCount(googlePlace.userRatingCount)}</span>}
+              <a className="google-maps-attribution" href={googleMapsUrl} rel="noreferrer" target="_blank" translate="no">Google Maps</a>
+            </div>
+            {googlePlace.reviews?.length > 0 && (
+              <details className="google-review-details">
+                <summary>{text.googleReviewHighlights(googlePlace.reviews.length)}</summary>
+                <div className="google-review-list">
+                  {googlePlace.reviews.map((review, index) => (
+                    <blockquote key={`${review.authorAttribution?.displayName ?? 'review'}-${index}`}>
+                      <p>{typeof review.text === 'string' ? review.text : review.text?.text}</p>
+                      <footer>
+                        {review.authorAttribution?.uri ? (
+                          <a href={review.authorAttribution.uri} rel="noreferrer" target="_blank">
+                            {review.authorAttribution.displayName}
+                          </a>
+                        ) : review.authorAttribution?.displayName}
+                        {review.relativePublishTimeDescription && <span> · {review.relativePublishTimeDescription}</span>}
+                      </footer>
+                    </blockquote>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+
         <div className="card-footer">
           <span className="verified-date">{restaurant.lastVerified ? text.verified(formatDate(restaurant.lastVerified, {
             day: 'numeric', month: 'short', year: 'numeric',
@@ -126,7 +195,13 @@ function RestaurantCard({ restaurant, location, picked, highlighted, onHighlight
           <div className="card-links">
             {restaurant.menuUrl ? (
               <a href={restaurant.menuUrl} rel="noreferrer" target="_blank">{text.menu} <ArrowUpRight size={14} /></a>
-            ) : <span className="link-unavailable">{text.menuUnavailable}</span>}
+            ) : null}
+            {restaurant.websiteUrl && restaurant.websiteUrl !== restaurant.menuUrl
+              ? <a href={restaurant.websiteUrl} rel="noreferrer" target="_blank">{text.website} <ArrowUpRight size={14} /></a>
+              : null}
+            {!restaurant.menuUrl && !restaurant.websiteUrl && (
+              <span className="link-unavailable">{text.menuUnavailable}</span>
+            )}
             <a href={getDirectionsUrl(restaurant, location)} rel="noreferrer" target="_blank"><MapPin size={14} /> {text.directions}</a>
           </div>
         </div>
@@ -139,6 +214,7 @@ function LunchRadar() {
   const [language, setLanguage] = useState('sv');
   const [maxWalkingTime, setMaxWalkingTime] = useState('10');
   const [maxPrice, setMaxPrice] = useState('');
+  const [minimumGoogleRating, setMinimumGoogleRating] = useState('');
   const [cuisine, setCuisine] = useState('');
   const [vegetarianOnly, setVegetarianOnly] = useState(false);
   const [veganOnly, setVeganOnly] = useState(false);
@@ -150,6 +226,9 @@ function LunchRadar() {
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [location, setLocation] = useState(officeCoordinates);
   const [restaurants, setRestaurants] = useState([]);
+  const [googlePlaces, setGooglePlaces] = useState([]);
+  const [googleReviewLocation, setGoogleReviewLocation] = useState(null);
+  const [googleReviewsStatus, setGoogleReviewsStatus] = useState(googlePlacesApiKey ? 'waiting' : 'unconfigured');
   const [locationStatus, setLocationStatus] = useState('locating');
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState(false);
@@ -252,6 +331,7 @@ function LunchRadar() {
       if (ignore) return;
       activeLocation = officeCoordinates;
       setLocation(officeCoordinates);
+      setGoogleReviewLocation(officeCoordinates);
       setRestaurants(restaurantData.restaurants);
       setLocationStatus('officeFallback');
       loadWeather(activeLocation);
@@ -264,6 +344,7 @@ function LunchRadar() {
         longitude: position.coords.longitude,
       };
       setLocation(activeLocation);
+      setGoogleReviewLocation(activeLocation);
       setLocationStatus('loadingRestaurants');
       loadWeather(activeLocation);
       loadNearbyRestaurants(activeLocation);
@@ -288,6 +369,30 @@ function LunchRadar() {
   }, []);
 
   useEffect(() => {
+    if (!googlePlacesApiKey || !googleReviewLocation) return undefined;
+
+    let ignore = false;
+    setGooglePlaces([]);
+    setGoogleReviewsStatus('loading');
+    fetchNearbyGooglePlaces(googleReviewLocation, googlePlacesApiKey)
+      .then((places) => {
+        if (ignore) return;
+        setGooglePlaces(places);
+        setGoogleReviewsStatus('ready');
+      })
+      .catch((error) => {
+        if (ignore) return;
+        console.error('Google Places reviews could not be loaded.', error);
+        setGooglePlaces([]);
+        setGoogleReviewsStatus('error');
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [googleReviewLocation]);
+
+  useEffect(() => {
     const timer = window.setInterval(() => setCurrentTime(new Date()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
@@ -310,9 +415,28 @@ function LunchRadar() {
     return text.announcement(getRestaurantName(choice, text), details);
   }, [pickedId, restaurants, text]);
 
+  const restaurantsWithGooglePlaces = useMemo(
+    () => restaurants.map((restaurant) => {
+      const googlePlace = matchGooglePlace(restaurant, googlePlaces);
+      const googleCuisine = getGoogleCuisine(googlePlace);
+      const photo = googlePlace?.photos?.[0];
+      return {
+        ...restaurant,
+        cuisine: restaurant.cuisine.length ? restaurant.cuisine : googleCuisine ? [googleCuisine] : restaurant.cuisine,
+        websiteUrl: restaurant.websiteUrl ?? googlePlace?.websiteUri,
+        googlePlace,
+        googlePhotoAttributions: photo?.authorAttributions ?? [],
+        imageUrl: photo?.uri
+          ? photo.uri
+          : restaurant.imageUrl,
+      };
+    }),
+    [googlePlaces, restaurants],
+  );
+
   const cuisines = useMemo(
-    () => [...new Set(restaurants.flatMap((restaurant) => restaurant.cuisine))].sort(),
-    [restaurants],
+    () => [...new Set(restaurantsWithGooglePlaces.flatMap((restaurant) => restaurant.cuisine))].sort(),
+    [restaurantsWithGooglePlaces],
   );
 
   const latestVerifiedDate = useMemo(
@@ -325,7 +449,7 @@ function LunchRadar() {
   );
 
   const filteredRestaurants = useMemo(() => {
-    return restaurants
+    return restaurantsWithGooglePlaces
       .filter((restaurant) => {
         const matchesWalkingTime = !maxWalkingTime
           || (restaurant.walkingTimeMinutes != null && restaurant.walkingTimeMinutes <= Number(maxWalkingTime));
@@ -335,20 +459,24 @@ function LunchRadar() {
         const matchesVegetarian = !vegetarianOnly || restaurant.vegetarian === true;
         const matchesVegan = !veganOnly || restaurant.vegan === true;
         const matchesTakeaway = !takeawayOnly || restaurant.takeaway === true;
+        const matchesGoogleRating = !minimumGoogleRating
+          || (restaurant.googlePlace?.rating != null
+            && restaurant.googlePlace.rating >= Number(minimumGoogleRating));
 
         return matchesWalkingTime && matchesPrice && matchesCuisine
-          && matchesVegetarian && matchesVegan && matchesTakeaway;
+          && matchesVegetarian && matchesVegan && matchesTakeaway && matchesGoogleRating;
       })
       .sort((a, b) => (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity));
-  }, [cuisine, maxPrice, maxWalkingTime, restaurants, takeawayOnly, veganOnly, vegetarianOnly]);
+  }, [cuisine, maxPrice, maxWalkingTime, minimumGoogleRating, restaurantsWithGooglePlaces, takeawayOnly, veganOnly, vegetarianOnly]);
 
   const hasFilters = Boolean(
-    maxWalkingTime || maxPrice || cuisine || vegetarianOnly || veganOnly || takeawayOnly,
+    maxWalkingTime || maxPrice || minimumGoogleRating || cuisine || vegetarianOnly || veganOnly || takeawayOnly,
   );
 
   function clearFilters() {
     setMaxWalkingTime('');
     setMaxPrice('');
+    setMinimumGoogleRating('');
     setCuisine('');
     setVegetarianOnly(false);
     setVeganOnly(false);
@@ -538,7 +666,7 @@ function LunchRadar() {
       </section>
 
       <section aria-label={text.filterLabel} className="filter-panel">
-        <div className="filter-top-row">
+        <div className="filter-toolbar">
           <div aria-label={text.maxWalk} className="walking-control" role="group">
             <span className="filter-label"><Clock3 size={16} /> {text.maxWalk}</span>
             <div className="segmented-control">
@@ -555,40 +683,56 @@ function LunchRadar() {
               ))}
             </div>
           </div>
-        </div>
-
-        <div className="filter-bottom-row">
           <div className="dietary-controls" aria-label={text.dietaryLabel}>
             <DietFilter checked={vegetarianOnly} icon={Leaf} label={text.vegetarian} onChange={(event) => setVegetarianOnly(event.target.checked)} />
             <DietFilter checked={veganOnly} icon={Vegan} label={text.vegan} onChange={(event) => setVeganOnly(event.target.checked)} />
             <DietFilter checked={takeawayOnly} icon={Check} label={text.takeaway} onChange={(event) => setTakeawayOnly(event.target.checked)} />
           </div>
 
-          <div className="select-controls">
-            <label className="select-control">
-              <span className="filter-label">{text.cuisine}</span>
-              <span className="select-wrap">
-                <select onChange={(event) => setCuisine(event.target.value)} value={cuisine}>
-                  <option value="">{text.allCuisines}</option>
-                  {cuisines.map((item) => <option key={item} value={item}>{getCuisineName(item, text)}</option>)}
-                </select>
-                <ChevronDown aria-hidden="true" size={14} />
-              </span>
-            </label>
-            <label className="select-control">
-              <span className="filter-label">{text.maxPrice}</span>
-              <span className="select-wrap">
-                <select onChange={(event) => setMaxPrice(event.target.value)} value={maxPrice}>
-                  <option value="">{text.allPrices}</option>
-                  {priceOptions.filter(Boolean).map((price) => (
-                    <option key={price} value={price}>{text.upTo(price)}</option>
-                  ))}
-                </select>
-                <ChevronDown aria-hidden="true" size={14} />
-              </span>
-            </label>
-          </div>
+          <label className="select-control">
+            <span className="filter-label">{text.cuisine}</span>
+            <span className="select-wrap">
+              <select onChange={(event) => setCuisine(event.target.value)} value={cuisine}>
+                <option value="">{text.allCuisines}</option>
+                {cuisines.map((item) => <option key={item} value={item}>{getCuisineName(item, text)}</option>)}
+              </select>
+              <ChevronDown aria-hidden="true" size={14} />
+            </span>
+          </label>
+          <label className="select-control">
+            <span className="filter-label">{text.maxPrice}</span>
+            <span className="select-wrap">
+              <select onChange={(event) => setMaxPrice(event.target.value)} value={maxPrice}>
+                <option value="">{text.allPrices}</option>
+                {priceOptions.filter(Boolean).map((price) => (
+                  <option key={price} value={price}>{text.upTo(price)}</option>
+                ))}
+              </select>
+              <ChevronDown aria-hidden="true" size={14} />
+            </span>
+          </label>
+          <label className="select-control">
+            <span className="filter-label">{text.googleRating}</span>
+            <span className="select-wrap">
+              <select onChange={(event) => setMinimumGoogleRating(event.target.value)} value={minimumGoogleRating}>
+                <option value="">{text.allGoogleRatings}</option>
+                {[3, 3.5, 4, 4.5].map((rating) => (
+                  <option key={rating} value={rating}>{text.minimumGoogleRating(rating)}</option>
+                ))}
+              </select>
+              <ChevronDown aria-hidden="true" size={14} />
+            </span>
+          </label>
         </div>
+        {googleReviewsStatus !== 'ready' && googleReviewsStatus !== 'waiting' && (
+          <p aria-live="polite" className="google-reviews-status">
+            {googleReviewsStatus === 'loading'
+              ? text.googleReviewsLoading
+              : googleReviewsStatus === 'error'
+                ? text.googleReviewsUnavailable
+                : text.googleReviewsNotConfigured}
+          </p>
+        )}
       </section>
 
       <div className="lunch-results-layout">

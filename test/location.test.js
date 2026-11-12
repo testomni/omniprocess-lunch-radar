@@ -50,6 +50,7 @@ test('maps named OSM restaurants and sorts them by distance', () => {
     vegan: true,
     takeaway: true,
     menuUrl: 'https://example.com/menu',
+    websiteUrl: null,
     imageUrl: 'https://example.com/cafe.jpg',
     directionsUrl: `https://www.openstreetmap.org/directions?engine=fossgis_valhalla_foot&route=${encodeURIComponent('59.35,18.06;59.3501,18.06')}`,
   });
@@ -91,4 +92,23 @@ test('requests named nearby places with tags and center coordinates', async () =
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('fills missing cuisine from a restaurant name and keeps an official website', () => {
+  const [restaurant] = mapNearbyRestaurants([{
+    type: 'node',
+    id: 9,
+    lat: 59.3501,
+    lon: 18.06,
+    tags: {
+      amenity: 'restaurant',
+      name: 'Sushi Yama',
+      website: 'https://example.com/',
+    },
+  }], origin);
+
+  assert.deepEqual(restaurant.cuisine, ['Japanese']);
+  assert.equal(restaurant.menuUrl, null);
+  assert.equal(restaurant.websiteUrl, 'https://example.com/');
+  assert.match(restaurant.imageUrl, /photo-1579871494447/);
 });
