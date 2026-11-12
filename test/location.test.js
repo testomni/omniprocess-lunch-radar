@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { findNearbyRestaurants, mapNearbyRestaurants } from '../src/location.js';
+import {
+  findNearbyRestaurants,
+  getCuisineFallbackImage,
+  getMenuSearchUrl,
+  mapNearbyRestaurants,
+} from '../src/location.js';
 
 const origin = { latitude: 59.35, longitude: 18.06 };
 
@@ -111,4 +116,43 @@ test('fills missing cuisine from a restaurant name and keeps an official website
   assert.equal(restaurant.menuUrl, null);
   assert.equal(restaurant.websiteUrl, 'https://example.com/');
   assert.match(restaurant.imageUrl, /photo-1579871494447/);
+});
+
+test('excludes restaurants tagged as closed or disused', () => {
+  const restaurants = mapNearbyRestaurants([
+    {
+      type: 'node',
+      id: 10,
+      lat: 59.3501,
+      lon: 18.06,
+      tags: { amenity: 'restaurant', name: 'Closed restaurant', closed: 'yes' },
+    },
+    {
+      type: 'node',
+      id: 11,
+      lat: 59.3502,
+      lon: 18.06,
+      tags: { amenity: 'restaurant', name: 'Disused restaurant', disused: 'yes' },
+    },
+    {
+      type: 'node',
+      id: 12,
+      lat: 59.3503,
+      lon: 18.06,
+      tags: { amenity: 'restaurant', name: 'Open restaurant' },
+    },
+  ], origin);
+
+  assert.deepEqual(restaurants.map(({ name }) => name), ['Open restaurant']);
+});
+
+test('uses cuisine-specific fallback imagery and offers a menu search when no menu is tagged', () => {
+  assert.match(getCuisineFallbackImage(['Mexican']), /photo-1552332386-f8dd00dc2f85/);
+
+  const menuSearch = new URL(getMenuSearchUrl({
+    name: 'Test Restaurant',
+    address: 'Main Street',
+  }));
+  assert.equal(menuSearch.origin, 'https://www.google.com');
+  assert.match(menuSearch.searchParams.get('q'), /Test Restaurant Main Street menu/);
 });

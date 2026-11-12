@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { fetchNearbyGooglePlaces, matchGooglePlace } from '../src/googlePlaces.js';
+import {
+  fetchNearbyGooglePlaces,
+  isGooglePlaceClosed,
+  matchGooglePlace,
+} from '../src/googlePlaces.js';
 
 test('matches Google Places by name and proximity, not name alone', () => {
   const restaurant = {
@@ -27,7 +31,7 @@ test('matches Google Places by name and proximity, not name alone', () => {
   );
 });
 
-test('requests and maps nearby Google reviews and attributed photos', async () => {
+test('requests and maps nearby Google reviews and operational status', async () => {
   const originalWindow = globalThis.window;
   let searchRequest;
   globalThis.window = {
@@ -49,12 +53,10 @@ test('requests and maps nearby Google reviews and attributed photos', async () =
                     reviews: [{ text: 'Great lunch.' }],
                     googleMapsURI: 'https://maps.google.com/?cid=123',
                     websiteURI: 'https://example.com/',
+                    businessStatus: 'OPERATIONAL',
+                    primaryType: 'thai_restaurant',
                     primaryTypeDisplayName: 'Restaurant',
                     types: ['restaurant'],
-                    photos: [{
-                      getURI: ({ maxWidth }) => `https://example.com/photo?w=${maxWidth}`,
-                      authorAttributions: [{ displayName: 'Photo Author' }],
-                    }],
                   }],
                 };
               },
@@ -74,10 +76,13 @@ test('requests and maps nearby Google reviews and attributed photos', async () =
     assert.equal(searchRequest.maxResultCount, 20);
     assert.equal(searchRequest.locationRestriction.radius, 1200);
     assert.ok(searchRequest.fields.includes('reviews'));
-    assert.ok(searchRequest.fields.includes('photos'));
+    assert.ok(searchRequest.fields.includes('businessStatus'));
     assert.equal(places[0].rating, 4.5);
-    assert.equal(places[0].photos[0].uri, 'https://example.com/photo?w=1200');
-    assert.equal(places[0].photos[0].authorAttributions[0].displayName, 'Photo Author');
+    assert.equal(places[0].businessStatus, 'OPERATIONAL');
+    assert.equal(places[0].primaryType, 'thai_restaurant');
+    assert.equal(isGooglePlaceClosed(places[0]), false);
+    assert.equal(isGooglePlaceClosed({ businessStatus: 'CLOSED_PERMANENTLY' }), true);
+    assert.equal(isGooglePlaceClosed({ businessStatus: 'CLOSED_TEMPORARILY' }), true);
   } finally {
     if (originalWindow === undefined) delete globalThis.window;
     else globalThis.window = originalWindow;

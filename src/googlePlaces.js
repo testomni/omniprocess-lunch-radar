@@ -73,9 +73,10 @@ export async function fetchNearbyGooglePlaces(location, apiKey) {
       'reviews',
       'googleMapsURI',
       'websiteURI',
+      'businessStatus',
+      'primaryType',
       'primaryTypeDisplayName',
       'types',
-      'photos',
     ],
     includedTypes: ['restaurant', 'cafe', 'fast_food_restaurant', 'food_court'],
     maxResultCount: 20,
@@ -98,13 +99,15 @@ export async function fetchNearbyGooglePlaces(location, apiKey) {
     reviews: place.reviews ?? [],
     googleMapsUri: place.googleMapsURI,
     websiteUri: place.websiteURI,
+    businessStatus: place.businessStatus,
+    primaryType: place.primaryType,
     primaryTypeDisplayName: { text: place.primaryTypeDisplayName ?? '' },
     types: place.types ?? [],
-    photos: (place.photos ?? []).map((photo) => ({
-      uri: photo.getURI({ maxWidth: 1200 }),
-      authorAttributions: photo.authorAttributions ?? [],
-    })),
   }));
+}
+
+export function isGooglePlaceClosed(place) {
+  return ['CLOSED_PERMANENTLY', 'CLOSED_TEMPORARILY'].includes(place?.businessStatus);
 }
 
 export function matchGooglePlace(restaurant, places) {

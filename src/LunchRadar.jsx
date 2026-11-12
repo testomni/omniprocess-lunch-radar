@@ -25,9 +25,15 @@ import omniProcessLogo from './assets/omniprocess-logo.png';
 import RestaurantMap from './RestaurantMap.jsx';
 import { getCuisineName, getRestaurantName, translations } from './translations.js';
 import { officeCoordinates } from './config.js';
-import { findNearbyRestaurants, getDirectionsUrl } from './location.js';
+import {
+  findNearbyRestaurants,
+  getCuisineFallbackImage,
+  getDirectionsUrl,
+  getMenuSearchUrl,
+} from './location.js';
 import { getHungerLevel, getLocalDateKey } from './hunger.js';
-import { fetchNearbyGooglePlaces, matchGooglePlace } from './googlePlaces.js';
+import { fetchNearbyGooglePlaces, isGooglePlaceClosed, matchGooglePlace } from './googlePlaces.js';
+import { getLunchWeatherAdvice } from './weather.js';
 
 const priceOptions = ['', '100', '125', '150', '175', '200', '250'];
 const googlePlacesApiKey = import.meta.env.VITE_GOOGLE_PLACES_API_KEY ?? '';
@@ -47,6 +53,7 @@ function getRadarPosition(restaurant, location) {
 
 function getGoogleCuisine(place) {
   const placeTypes = [
+    place?.primaryType,
     place?.primaryTypeDisplayName?.text,
     ...(place?.types ?? []),
   ].filter(Boolean).join(' ').toLowerCase();
@@ -58,9 +65,11 @@ function getGoogleCuisine(place) {
     [/italian|pizza/, 'Italian'],
     [/mexican/, 'Mexican'],
     [/burger|american/, 'American'],
+    [/korean/, 'Korean'],
+    [/vietnamese/, 'Vietnamese'],
+    [/mediterranean|greek/, 'Mediterranean'],
     [/cafe|coffee/, 'Cafe'],
     [/fast.food/, 'Fast food'],
-    [/restaurant|food.court/, 'Restaurant'],
   ];
 
   return cuisineTypes.find(([pattern]) => pattern.test(placeTypes))?.[1] ?? '';
@@ -107,6 +116,7 @@ function DietFilter({ checked, label, onChange, icon: Icon }) {
 function RestaurantCard({ restaurant, location, picked, highlighted, onHighlightChange, text }) {
   const googlePlace = restaurant.googlePlace;
   const googleMapsUrl = googlePlace ? getGoogleMapsUrl(googlePlace) : '';
+  const hasDedicatedMenu = Boolean(restaurant.menuUrl && restaurant.menuUrl !== restaurant.websiteUrl);
   return (
     <article
       className={`restaurant-card${picked ? ' is-picked' : ''}${highlighted ? ' is-map-highlighted' : ''}`}
@@ -124,13 +134,6 @@ function RestaurantCard({ restaurant, location, picked, highlighted, onHighlight
         ) : (
           <span aria-hidden="true" className="image-placeholder"><Utensils size={30} /></span>
         )}
-        {restaurant.googlePhotoAttributions?.map((attribution) => (
-          <span className="photo-attribution" key={`${attribution.displayName}-${attribution.uri ?? ''}`}>
-            {attribution.uri ? (
-              <a href={attribution.uri} rel="noreferrer" target="_blank">{attribution.displayName}</a>
-            ) : attribution.displayName}
-          </span>
-        ))}
         <span className="walk-badge"><Clock3 size={14} /> {restaurant.walkingTimeMinutes == null ? text.walkingUnknown : text.walkingMinutes(restaurant.walkingTimeMinutes)}</span>
         {picked && <span className="picked-badge"><Sparkles size={14} /> {text.picked}</span>}
         <span className="cuisine-badge">{restaurant.cuisine.length
@@ -193,15 +196,12 @@ function RestaurantCard({ restaurant, location, picked, highlighted, onHighlight
             day: 'numeric', month: 'short', year: 'numeric',
           }, text.locale)) : text.unverified}</span>
           <div className="card-links">
-            {restaurant.menuUrl ? (
-              <a href={restaurant.menuUrl} rel="noreferrer" target="_blank">{text.menu} <ArrowUpRight size={14} /></a>
-            ) : null}
-            {restaurant.websiteUrl && restaurant.websiteUrl !== restaurant.menuUrl
+            <a href={hasDedicatedMenu ? restaurant.menuUrl : getMenuSearchUrl(restaurant)} rel="noreferrer" target="_blank">
+              {hasDedicatedMenu ? text.menu : text.findMenu} <ArrowUpRight size={14} />
+            </a>
+            {restaurant.websiteUrl && (!hasDedicatedMenu || restaurant.websiteUrl !== restaurant.menuUrl)
               ? <a href={restaurant.websiteUrl} rel="noreferrer" target="_blank">{text.website} <ArrowUpRight size={14} /></a>
               : null}
-            {!restaurant.menuUrl && !restaurant.websiteUrl && (
-              <span className="link-unavailable">{text.menuUnavailable}</span>
-            )}
             <a href={getDirectionsUrl(restaurant, location)} rel="noreferrer" target="_blank"><MapPin size={14} /> {text.directions}</a>
           </div>
         </div>
@@ -229,6 +229,7 @@ function LunchRadar() {
   const [googlePlaces, setGooglePlaces] = useState([]);
   const [googleReviewLocation, setGoogleReviewLocation] = useState(null);
   const [googleReviewsStatus, setGoogleReviewsStatus] = useState(googlePlacesApiKey ? 'waiting' : 'unconfigured');
+  const [googleReviewsError, setGoogleReviewsError] = useState('');
   const [locationStatus, setLocationStatus] = useState('locating');
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState(false);
@@ -302,7 +303,6 @@ function LunchRadar() {
             symbolCode,
             hourlyForecast,
             updatedAt: currentEntry.time,
-            isRainy: /rain|shower|snow|sleet|thunder|fog/.test(String(symbolCode)),
           });
           setWeatherError(false);
         }
@@ -313,16 +313,17 @@ function LunchRadar() {
       }
     }
 
-    async function loadNearbyRestaurants(coordinates) {
+    async function loadNearbyRestaurants(coordinates, fallbackRestaurants = []) {
       try {
         const nearbyRestaurants = await findNearbyRestaurants(coordinates);
         if (ignore) return;
         setRestaurants(nearbyRestaurants);
-        setLocationStatus(nearbyRestaurants.length ? 'current' : 'noNearbyRestaurants');
+        if (!nearbyRestaurants.length) setLocationStatus('noNearbyRestaurants');
+        else setLocationStatus(fallbackRestaurants.length ? 'officeFallback' : 'current');
       } catch (error) {
         if (!ignore) {
-          setRestaurants([]);
-          setLocationStatus('restaurantsUnavailable');
+          setRestaurants(fallbackRestaurants);
+          setLocationStatus(fallbackRestaurants.length ? 'officeFallback' : 'restaurantsUnavailable');
         }
       }
     }
@@ -335,6 +336,7 @@ function LunchRadar() {
       setRestaurants(restaurantData.restaurants);
       setLocationStatus('officeFallback');
       loadWeather(activeLocation);
+      loadNearbyRestaurants(officeCoordinates, restaurantData.restaurants);
     }
 
     function useCurrentLocation(position) {
@@ -373,17 +375,19 @@ function LunchRadar() {
 
     let ignore = false;
     setGooglePlaces([]);
+    setGoogleReviewsError('');
     setGoogleReviewsStatus('loading');
     fetchNearbyGooglePlaces(googleReviewLocation, googlePlacesApiKey)
       .then((places) => {
         if (ignore) return;
         setGooglePlaces(places);
-        setGoogleReviewsStatus('ready');
+        setGoogleReviewsStatus(places.length ? 'ready' : 'empty');
       })
       .catch((error) => {
         if (ignore) return;
         console.error('Google Places reviews could not be loaded.', error);
         setGooglePlaces([]);
+        setGoogleReviewsError(error instanceof Error ? error.message.replaceAll(googlePlacesApiKey, '[redacted]').slice(0, 180) : '');
         setGoogleReviewsStatus('error');
       });
 
@@ -419,20 +423,35 @@ function LunchRadar() {
     () => restaurants.map((restaurant) => {
       const googlePlace = matchGooglePlace(restaurant, googlePlaces);
       const googleCuisine = getGoogleCuisine(googlePlace);
-      const photo = googlePlace?.photos?.[0];
+      const generalCuisines = new Set(['Asian', 'American', 'Restaurant', 'Fast food', 'Food court']);
+      const useGoogleCuisine = googleCuisine
+        && (!restaurant.cuisine.length || restaurant.cuisine.every((item) => generalCuisines.has(item)));
+      const cuisine = useGoogleCuisine ? [googleCuisine] : restaurant.cuisine;
       return {
         ...restaurant,
-        cuisine: restaurant.cuisine.length ? restaurant.cuisine : googleCuisine ? [googleCuisine] : restaurant.cuisine,
+        cuisine,
         websiteUrl: restaurant.websiteUrl ?? googlePlace?.websiteUri,
         googlePlace,
-        googlePhotoAttributions: photo?.authorAttributions ?? [],
-        imageUrl: photo?.uri
-          ? photo.uri
+        imageUrl: useGoogleCuisine
+          ? getCuisineFallbackImage(cuisine)
           : restaurant.imageUrl,
       };
-    }),
+    }).filter((restaurant) => !isGooglePlaceClosed(restaurant.googlePlace)),
     [googlePlaces, restaurants],
   );
+  const googleReviewsNotice = googleReviewsStatus === 'ready'
+    ? restaurants.length && !restaurantsWithGooglePlaces.some((restaurant) => restaurant.googlePlace)
+      ? text.googleReviewsNoMatches
+      : ''
+    : googleReviewsStatus === 'loading'
+      ? text.googleReviewsLoading
+      : googleReviewsStatus === 'error'
+        ? `${text.googleReviewsUnavailable}${googleReviewsError ? ` ${googleReviewsError}` : ''}`
+        : googleReviewsStatus === 'empty'
+          ? text.googleReviewsNoResults
+          : googleReviewsStatus === 'unconfigured'
+            ? text.googleReviewsNotConfigured
+            : '';
 
   const cuisines = useMemo(
     () => [...new Set(restaurantsWithGooglePlaces.flatMap((restaurant) => restaurant.cuisine))].sort(),
@@ -472,6 +491,9 @@ function LunchRadar() {
   const hasFilters = Boolean(
     maxWalkingTime || maxPrice || minimumGoogleRating || cuisine || vegetarianOnly || veganOnly || takeawayOnly,
   );
+  const weatherAdvice = weather
+    ? getLunchWeatherAdvice(weather.symbolCode, weather.temperature, weather.windSpeed)
+    : null;
 
   function clearFilters() {
     setMaxWalkingTime('');
@@ -637,8 +659,12 @@ function LunchRadar() {
                   </div>
                   <div className="weather-meta">
                     <span><Wind size={14} /> {weather.windSpeed.toFixed(1)} m/s</span>
-                    <span className={`weather-status ${weather.temperature >= 5 && weather.temperature <= 25 && !weather.isRainy && weather.windSpeed <= 10 ? 'is-good' : 'is-bad'}`}>
-                      {weather.temperature >= 5 && weather.temperature <= 25 && !weather.isRainy && weather.windSpeed <= 10 ? text.weatherGood : text.weatherBad}
+                    <span className={`weather-status ${weatherAdvice === 'good' ? 'is-good' : 'is-bad'}`}>
+                      {weatherAdvice === 'umbrella'
+                        ? text.weatherBad
+                        : weatherAdvice === 'notIdeal'
+                          ? text.weatherNotIdeal
+                          : text.weatherGood}
                     </span>
                   </div>
                   {weather.hourlyForecast.length > 0 && (
@@ -724,15 +750,7 @@ function LunchRadar() {
             </span>
           </label>
         </div>
-        {googleReviewsStatus !== 'ready' && googleReviewsStatus !== 'waiting' && (
-          <p aria-live="polite" className="google-reviews-status">
-            {googleReviewsStatus === 'loading'
-              ? text.googleReviewsLoading
-              : googleReviewsStatus === 'error'
-                ? text.googleReviewsUnavailable
-                : text.googleReviewsNotConfigured}
-          </p>
-        )}
+        {googleReviewsNotice && <p aria-live="polite" className="google-reviews-status">{googleReviewsNotice}</p>}
       </section>
 
       <div className="lunch-results-layout">

@@ -162,9 +162,6 @@ h1, h2, h3, p { margin: 0; }
 .google-review-list blockquote p { color: #35414a; line-height: 1.45; }
 .google-review-list blockquote footer { margin-top: 5px; color: #5e5e5e; font-size: 10px; }
 .google-review-list a { color: #35414a; text-underline-offset: 2px; }
-.photo-attribution { position: absolute; z-index: 2; right: 8px; bottom: 8px; max-width: calc(100% - 16px); overflow: hidden; padding: 4px 6px; border-radius: 3px; background: rgb(255 255 255 / 94%); color: #35414a; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-.photo-attribution a { color: inherit; }
-
 .lunch-results-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, .8fr); align-items: start; gap: 28px; }
 .map-section { position: sticky; top: 20px; min-width: 0; padding-top: 39px; }
 .map-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
