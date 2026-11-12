@@ -110,19 +110,39 @@ function getLunchPrice(tags, amenity, cuisine) {
   return 135;
 }
 
+function getRestaurantAddress(tags) {
+  const fullAddress = tags['addr:full'] ?? tags['contact:address'] ?? tags['contact:addr'];
+  if (fullAddress?.trim()) return fullAddress.trim();
+
+  const houseNumber = tags['addr:housenumber'] ?? tags['contact:housenumber'] ?? '';
+  const street = tags['addr:street'] ?? tags['contact:street'] ?? tags.street ?? '';
+  const place = tags['addr:place'] ?? tags['contact:place'] ?? '';
+  const postalCode = tags['addr:postcode'] ?? tags['contact:postcode'] ?? '';
+  const locality = tags['addr:city']
+    ?? tags['addr:town']
+    ?? tags['addr:village']
+    ?? tags['addr:suburb']
+    ?? tags['addr:municipality']
+    ?? tags['contact:city']
+    ?? '';
+  const addressLine = street
+    ? [houseNumber, street].filter(Boolean).join(' ')
+    : place;
+
+  return [
+    addressLine,
+    postalCode,
+    locality,
+  ].filter(Boolean).join(', ');
+}
+
 function toRestaurant(element, origin) {
   const coordinates = getCoordinates(element);
   const tags = element.tags ?? {};
   if (!coordinates || !tags.name || isInactiveRestaurant(tags, tags.name)) return null;
 
   const distanceMeters = Math.round(getDistanceMeters(origin, coordinates));
-  const address = tags['addr:full']
-    || [
-      [tags['addr:housenumber'], tags['addr:street']].filter(Boolean).join(' '),
-      tags['addr:postcode'],
-      tags['addr:city'],
-    ].filter(Boolean).join(', ')
-    || '';
+  const address = getRestaurantAddress(tags);
   const taggedCuisine = (tags.cuisine ?? tags['cuisine:en'] ?? tags['cuisine:sv'] ?? '')
     .split(/[;,]/)
     .map((item) => item.trim())
@@ -130,10 +150,6 @@ function toRestaurant(element, origin) {
     .map(titleCase);
   const cuisine = taggedCuisine.length ? taggedCuisine : inferCuisine(tags.name, tags);
   const imageUrl = getRestaurantImage(tags, cuisine);
-  const route = [
-    `${origin.latitude},${origin.longitude}`,
-    `${coordinates.latitude},${coordinates.longitude}`,
-  ].join(';');
 
   return {
     id: `osm-${element.type}-${element.id}`,
@@ -153,7 +169,6 @@ function toRestaurant(element, origin) {
       ?? getExternalUrl(tags['menu:url'])
       ?? getExternalUrl(tags['contact:menu']),
     websiteUrl: getExternalUrl(tags.website ?? tags['contact:website'] ?? tags.url),
-    directionsUrl: `https://www.openstreetmap.org/directions?engine=fossgis_valhalla_foot&route=${encodeURIComponent(route)}`,
   };
 }
 
@@ -200,11 +215,18 @@ export async function findNearbyRestaurants(origin) {
 }
 
 export function getDirectionsUrl(restaurant, origin) {
-  if (restaurant.directionsUrl) return restaurant.directionsUrl;
-
-  const route = [
-    `${origin.latitude},${origin.longitude}`,
-    `${restaurant.latitude},${restaurant.longitude}`,
-  ].join(';');
-  return `https://www.openstreetmap.org/directions?engine=fossgis_valhalla_foot&route=${encodeURIComponent(route)}`;
+  const directionsUrl = new URL('https://www.google.com/maps/dir/');
+  directionsUrl.searchParams.set('api', '1');
+  if (Number.isFinite(origin?.latitude) && Number.isFinite(origin?.longitude)) {
+    directionsUrl.searchParams.set('origin', `${origin.latitude},${origin.longitude}`);
+  }
+  const destination = Number.isFinite(restaurant.latitude) && Number.isFinite(restaurant.longitude)
+    ? `${restaurant.latitude},${restaurant.longitude}`
+    : [restaurant.name, restaurant.address].filter(Boolean).join(', ');
+  directionsUrl.searchParams.set('destination', destination);
+  directionsUrl.searchParams.set('travelmode', 'walking');
+  if (restaurant.googlePlace?.id) {
+    directionsUrl.searchParams.set('destination_place_id', restaurant.googlePlace.id);
+  }
+  return directionsUrl.href;
 }

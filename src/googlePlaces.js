@@ -67,6 +67,7 @@ export async function fetchNearbyGooglePlaces(location, apiKey) {
     fields: [
       'id',
       'displayName',
+      'formattedAddress',
       'location',
       'rating',
       'userRatingCount',
@@ -90,6 +91,7 @@ export async function fetchNearbyGooglePlaces(location, apiKey) {
   return places.map((place) => ({
     id: place.id,
     displayName: { text: place.displayName ?? '' },
+    formattedAddress: place.formattedAddress ?? '',
     location: place.location ? {
       latitude: typeof place.location.lat === 'function' ? place.location.lat() : place.location.lat,
       longitude: typeof place.location.lng === 'function' ? place.location.lng() : place.location.lng,

@@ -9,7 +9,7 @@ export const translations = {
     cuisineUnknown: 'Kök ej angivet',
     hungerLabel: 'Hungrighetsbarometer',
     hungerValue: (value) => `${value}% hungrig`,
-    hungerBeforeStart: 'Barometern startar kl. 07:00.',
+    hungerBeforeStart: 'Snart är det dags för lunch.',
     hungerStatus: (value) => value < 25
       ? 'Lugnt än så länge.'
       : value < 50
@@ -20,7 +20,8 @@ export const translations = {
     dangerMessage: 'Nu måste du gå och äta lunch – det börjar bli farligt!',
     lunchEatenButton: 'Ätit lunch idag',
     lunchEatenDoneButton: 'Lugn, jag har redan ätit lunch',
-    lunchEatenStatus: 'Lunchen är avklarad. Barometern startar om kl. 07:00 i morgon.',
+    lunchEatenStatus: 'Lunchen är avklarad för idag.',
+    lunchTimeOver: 'Lunchtiden är över för idag, kom tillbaka imorgon för goda måltider.',
     radarSystem: 'LUNCHSYSTEM / 01',
     radarTitle: 'Lunchradar',
     radarLive: 'LIVE',
@@ -56,7 +57,7 @@ export const translations = {
     nearbyRestaurantsHint: 'Försök igen senare eller kontrollera din internetanslutning.',
     placeholderRestaurant: 'Platshållarrestaurang',
     placeholderCuisine: 'Platshållarkök',
-    unavailableAddress: 'Adress saknas',
+    findAddress: 'Visa adress i Google Maps',
     cuisines: {
       'Comfort food': 'Husmanskost',
       American: 'Amerikanskt',
@@ -85,7 +86,6 @@ export const translations = {
     walkingUnknown: 'Gångtid saknas',
     picked: 'Ditt val',
     priceUnknown: 'Pris saknas',
-    googleRatingUnavailable: 'Betyg saknas',
     googleReviewCount: (count) => `${count.toLocaleString('sv-SE')} recensioner`,
     googleReviewHighlights: (count) => `Visa Google-recensioner (${count})`,
     googleReviewsNotConfigured: 'Google-recensioner kräver en konfigurerad Places API-nyckel.',
@@ -126,7 +126,6 @@ export const translations = {
     maxPrice: 'Maxpris',
     allPrices: 'Alla priser',
     upTo: (price) => `Upp till ${price} kr`,
-    googleRating: 'Google-betyg',
     restaurants: 'Lunchställen',
     restaurantCount: (count) => `${count} ${count === 1 ? 'restaurang' : 'restauranger'}`,
     clearFilters: 'Rensa filter',
@@ -165,7 +164,7 @@ export const translations = {
     cuisineUnknown: 'Cuisine not specified',
     hungerLabel: 'Hunger barometer',
     hungerValue: (value) => `${value}% hungry`,
-    hungerBeforeStart: 'The barometer starts at 07:00.',
+    hungerBeforeStart: 'Lunch is still a little while away.',
     hungerStatus: (value) => value < 25
       ? 'Still plenty of time.'
       : value < 50
@@ -176,7 +175,8 @@ export const translations = {
     dangerMessage: 'You must go eat lunch now — it’s getting dangerous!',
     lunchEatenButton: 'Lunch eaten today',
     lunchEatenDoneButton: 'Relax, I already had lunch',
-    lunchEatenStatus: 'Lunch is done. The barometer resets at 07:00 tomorrow.',
+    lunchEatenStatus: 'Lunch is checked off for today.',
+    lunchTimeOver: 'Lunch time over for today, come back tomorrow for tasty meals.',
     radarSystem: 'LUNCH SYSTEM / 01',
     radarTitle: 'Live lunch radar',
     radarLive: 'LIVE',
@@ -212,7 +212,7 @@ export const translations = {
     nearbyRestaurantsHint: 'Try again later or check your internet connection.',
     placeholderRestaurant: 'Placeholder restaurant',
     placeholderCuisine: 'Placeholder cuisine',
-    unavailableAddress: 'Address unavailable',
+    findAddress: 'See address on Google Maps',
     cuisines: {
       American: 'American',
       Asian: 'Asian',
@@ -241,7 +241,6 @@ export const translations = {
     walkingUnknown: 'Walking time unavailable',
     picked: 'Your pick',
     priceUnknown: 'Price unavailable',
-    googleRatingUnavailable: 'No rating',
     googleReviewCount: (count) => `${count.toLocaleString('en')} reviews`,
     googleReviewHighlights: (count) => `Read Google reviews (${count})`,
     googleReviewsNotConfigured: 'Google reviews need a configured Places API key.',
@@ -282,7 +281,6 @@ export const translations = {
     maxPrice: 'Max price',
     allPrices: 'Any price',
     upTo: (price) => `Up to ${price} kr`,
-    googleRating: 'Google rating',
     restaurants: 'Lunch spots',
     restaurantCount: (count) => `${count} ${count === 1 ? 'restaurant' : 'restaurants'}`,
     clearFilters: 'Clear filters',

@@ -83,7 +83,10 @@ function getGoogleMapsUrl(place) {
 function getGoogleMapsSearchUrl(restaurant) {
   const search = new URL('https://www.google.com/maps/search/');
   search.searchParams.set('api', '1');
-  search.searchParams.set('query', `${restaurant.name} ${restaurant.address ?? ''}`);
+  const query = restaurant.address
+    ? `${restaurant.name} ${restaurant.address}`
+    : `${restaurant.name} ${restaurant.latitude},${restaurant.longitude}`;
+  search.searchParams.set('query', query);
   return search.href;
 }
 
@@ -153,7 +156,9 @@ function RestaurantCard({ restaurant, location, picked, highlighted, onHighlight
           <h3>{getRestaurantName(restaurant, text)}</h3>
           <span className="price">{restaurant.typicalLunchPriceSek == null ? text.priceUnknown : `~${restaurant.typicalLunchPriceSek} kr`}</span>
         </div>
-        <p className="price-note">{!restaurant.address || /^Placeholder address \d+$/.test(restaurant.address) ? text.unavailableAddress : restaurant.address}</p>
+        <p className="price-note">{restaurant.address && !/^Placeholder address \d+$/.test(restaurant.address)
+          ? restaurant.address
+          : <a className="address-fallback-link" href={googleMapsUrl} rel="noreferrer" target="_blank">{text.findAddress}</a>}</p>
 
         <div className="restaurant-tags" aria-label={text.dietaryLabel}>
           {restaurant.vegetarian && <span className="info-tag"><Leaf size={13} /> {text.vegetarian}</span>}
@@ -168,9 +173,9 @@ function RestaurantCard({ restaurant, location, picked, highlighted, onHighlight
 
         <div className="google-review-panel">
           <div className="google-review-heading">
-            <strong>{googlePlace?.rating == null
-              ? text.googleRatingUnavailable
-              : `★ ${googlePlace.rating.toLocaleString(text.locale, { maximumFractionDigits: 1 })}`}</strong>
+            {googlePlace?.rating != null && (
+              <strong>★ {googlePlace.rating.toLocaleString(text.locale, { maximumFractionDigits: 1 })}</strong>
+            )}
             {googlePlace?.userRatingCount != null && <span>{text.googleReviewCount(googlePlace.userRatingCount)}</span>}
             <a className="google-maps-attribution" href={googleMapsUrl} rel="noreferrer" target="_blank" translate="no">Google Maps</a>
           </div>
@@ -243,8 +248,7 @@ function LunchRadar() {
   const text = translations[language];
   const manualLunchEaten = lunchEatenDate === getLocalDateKey(currentTime);
   const hungerPhase = getHungerPhase(currentTime, manualLunchEaten);
-  const hasEatenLunchToday = hungerPhase === 'lunchDone';
-  const hungerLevel = getHungerLevel(currentTime, hasEatenLunchToday);
+  const hungerLevel = getHungerLevel(currentTime, manualLunchEaten);
   const isDangerous = hungerLevel === 100;
   const radarTime = currentTime.toLocaleTimeString(text.locale, {
     hour: '2-digit',
@@ -445,6 +449,7 @@ function LunchRadar() {
       const cuisine = useGoogleCuisine ? [googleCuisine] : restaurant.cuisine;
       return {
         ...restaurant,
+        address: restaurant.address || googlePlace?.formattedAddress || '',
         cuisine,
         websiteUrl: restaurant.websiteUrl ?? googlePlace?.websiteUri,
         googlePlace,
@@ -588,18 +593,20 @@ function LunchRadar() {
                   </div>
                   <p aria-live="polite">{hungerPhase === 'beforeStart'
                     ? text.hungerBeforeStart
-                    : hasEatenLunchToday
-                      ? text.lunchEatenStatus
-                      : isDangerous ? text.dangerMessage : text.hungerStatus(hungerLevel)}</p>
+                    : hungerPhase === 'afterLunch'
+                      ? text.lunchTimeOver
+                      : manualLunchEaten
+                        ? text.lunchEatenStatus
+                        : isDangerous ? text.dangerMessage : text.hungerStatus(hungerLevel)}</p>
                 </div>
                 <button
-                  aria-pressed={hasEatenLunchToday}
+                  aria-pressed={manualLunchEaten}
                   className="lunch-eaten-button"
                   onClick={() => setLunchEatenDate(getLocalDateKey(currentTime))}
                   type="button"
                 >
                   <Check aria-hidden="true" size={15} />
-                  {hasEatenLunchToday ? text.lunchEatenDoneButton : text.lunchEatenButton}
+                  {manualLunchEaten ? text.lunchEatenDoneButton : text.lunchEatenButton}
                 </button>
               </div>
               <button

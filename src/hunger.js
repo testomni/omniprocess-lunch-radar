@@ -3,10 +3,10 @@ export function getLocalDateKey(date) {
 }
 
 export function getHungerPhase(date, lunchEatenToday = false) {
-  if (lunchEatenToday) return 'lunchDone';
   const minutesSinceMidnight = date.getHours() * 60 + date.getMinutes();
+  if (minutesSinceMidnight >= 16 * 60) return 'afterLunch';
+  if (lunchEatenToday) return 'lunchDone';
   if (minutesSinceMidnight < 7 * 60) return 'beforeStart';
-  if (minutesSinceMidnight >= 16 * 60) return 'lunchDone';
   return 'active';
 }
 

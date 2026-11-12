@@ -47,6 +47,7 @@ test('requests and maps nearby Google reviews and operational status', async () 
                   places: [{
                     id: 'google-place-1',
                     displayName: 'Test Restaurant',
+                    formattedAddress: '1 Main Street, Stockholm',
                     location: { lat: () => 59.35, lng: () => 18.06 },
                     rating: 4.5,
                     userRatingCount: 123,
@@ -77,7 +78,9 @@ test('requests and maps nearby Google reviews and operational status', async () 
     assert.equal(searchRequest.locationRestriction.radius, 1200);
     assert.ok(searchRequest.fields.includes('reviews'));
     assert.ok(searchRequest.fields.includes('businessStatus'));
+    assert.ok(searchRequest.fields.includes('formattedAddress'));
     assert.equal(places[0].rating, 4.5);
+    assert.equal(places[0].formattedAddress, '1 Main Street, Stockholm');
     assert.equal(places[0].businessStatus, 'OPERATIONAL');
     assert.equal(places[0].primaryType, 'thai_restaurant');
     assert.equal(isGooglePlaceClosed(places[0]), false);

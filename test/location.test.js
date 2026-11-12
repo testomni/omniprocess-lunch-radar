@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   findNearbyRestaurants,
   getCuisineFallbackImage,
+  getDirectionsUrl,
   getMenuSearchUrl,
   mapNearbyRestaurants,
 } from '../src/location.js';
@@ -57,7 +58,6 @@ test('maps named OSM restaurants and sorts them by distance', () => {
     menuUrl: 'https://example.com/menu',
     websiteUrl: null,
     imageUrl: 'https://example.com/cafe.jpg',
-    directionsUrl: `https://www.openstreetmap.org/directions?engine=fossgis_valhalla_foot&route=${encodeURIComponent('59.35,18.06;59.3501,18.06')}`,
   });
   assert.ok(restaurants[1].distanceMeters > restaurants[0].distanceMeters);
   assert.equal(restaurants[1].menuUrl, null);
@@ -116,6 +116,42 @@ test('fills missing cuisine from a restaurant name and keeps an official website
   assert.equal(restaurant.menuUrl, null);
   assert.equal(restaurant.websiteUrl, 'https://example.com/');
   assert.match(restaurant.imageUrl, /photo-1579871494447/);
+});
+
+test('uses contact and place tags to construct an address', () => {
+  const [restaurant] = mapNearbyRestaurants([{
+    type: 'node',
+    id: 14,
+    lat: 59.3501,
+    lon: 18.06,
+    tags: {
+      amenity: 'restaurant',
+      name: 'Addressed restaurant',
+      'contact:housenumber': '7',
+      'contact:street': 'Side Street',
+      'addr:postcode': '123 45',
+      'addr:city': 'Stockholm',
+    },
+  }], origin);
+
+  assert.equal(restaurant.address, '7 Side Street, 123 45, Stockholm');
+});
+
+test('opens Google Maps walking directions to the restaurant', () => {
+  const directionsUrl = new URL(getDirectionsUrl({
+    name: 'Test Restaurant',
+    latitude: 59.351,
+    longitude: 18.061,
+    googlePlace: { id: 'google-place-1' },
+  }, origin));
+
+  assert.equal(directionsUrl.origin, 'https://www.google.com');
+  assert.equal(directionsUrl.pathname, '/maps/dir/');
+  assert.equal(directionsUrl.searchParams.get('api'), '1');
+  assert.equal(directionsUrl.searchParams.get('origin'), '59.35,18.06');
+  assert.equal(directionsUrl.searchParams.get('destination'), '59.351,18.061');
+  assert.equal(directionsUrl.searchParams.get('destination_place_id'), 'google-place-1');
+  assert.equal(directionsUrl.searchParams.get('travelmode'), 'walking');
 });
 
 test('excludes restaurants tagged as closed or disused', () => {

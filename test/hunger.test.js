@@ -23,8 +23,9 @@ test('barometer phase text changes before opening, during lunch, and after 16:00
   assert.equal(getHungerPhase(new Date(2026, 10, 12, 6, 59)), 'beforeStart');
   assert.equal(getHungerPhase(new Date(2026, 10, 12, 7, 0)), 'active');
   assert.equal(getHungerPhase(new Date(2026, 10, 12, 12, 0)), 'active');
-  assert.equal(getHungerPhase(new Date(2026, 10, 12, 16, 0)), 'lunchDone');
+  assert.equal(getHungerPhase(new Date(2026, 10, 12, 16, 0)), 'afterLunch');
   assert.equal(getHungerPhase(new Date(2026, 10, 12, 12, 0), true), 'lunchDone');
+  assert.equal(getHungerPhase(new Date(2026, 10, 12, 16, 0), true), 'afterLunch');
 });
 
 test('recording lunch eaten resets hunger for that day', () => {
