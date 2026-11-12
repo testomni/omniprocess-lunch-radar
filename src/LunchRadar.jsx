@@ -26,6 +26,8 @@ import restaurantData from './data/restaurants.json';
 import omniProcessLogo from './assets/omniprocess-logo.png';
 import RestaurantMap from './RestaurantMap.jsx';
 import { getCuisineName, getRestaurantName, translations } from './translations.js';
+import { officeCoordinates } from './config.js';
+import { findNearbyRestaurants, getDirectionsUrl } from './location.js';
 
 const priceOptions = ['', '100', '125', '150', '175', '200', '250'];
 const radarContactPositions = [
@@ -73,12 +75,6 @@ function getWeatherStatusText(symbolCode, text) {
   return text.weatherCloudy;
 }
 
-const latestVerifiedDate = restaurantData.restaurants
-  .map((restaurant) => restaurant.lastVerified)
-  .filter(Boolean)
-  .sort()
-  .at(-1) ?? null;
-
 function DietFilter({ checked, label, onChange, icon: Icon }) {
   return (
     <label className={`diet-filter${checked ? ' is-active' : ''}`}>
@@ -89,7 +85,7 @@ function DietFilter({ checked, label, onChange, icon: Icon }) {
   );
 }
 
-function RestaurantCard({ restaurant, picked, highlighted, onHighlightChange, text }) {
+function RestaurantCard({ restaurant, location, picked, highlighted, onHighlightChange, text }) {
   return (
     <article
       className={`restaurant-card${picked ? ' is-picked' : ''}${highlighted ? ' is-map-highlighted' : ''}`}
@@ -119,7 +115,7 @@ function RestaurantCard({ restaurant, picked, highlighted, onHighlightChange, te
           <h3>{getRestaurantName(restaurant, text)}</h3>
           <span className="price">{restaurant.typicalLunchPriceSek == null ? text.priceUnknown : `~${restaurant.typicalLunchPriceSek} kr`}</span>
         </div>
-        <p className="price-note">{/^Placeholder address \d+$/.test(restaurant.address) ? text.unavailableAddress : restaurant.address}</p>
+        <p className="price-note">{!restaurant.address || /^Placeholder address \d+$/.test(restaurant.address) ? text.unavailableAddress : restaurant.address}</p>
 
         <div className="restaurant-tags" aria-label={text.dietaryLabel}>
           {restaurant.vegetarian && <span className="info-tag"><Leaf size={13} /> {text.vegetarian}</span>}
@@ -140,9 +136,7 @@ function RestaurantCard({ restaurant, picked, highlighted, onHighlightChange, te
             {restaurant.menuUrl ? (
               <a href={restaurant.menuUrl} rel="noreferrer" target="_blank">{text.menu} <ArrowUpRight size={14} /></a>
             ) : <span className="link-unavailable">{text.menuUnavailable}</span>}
-            {restaurant.directionsUrl ? (
-              <a href={restaurant.directionsUrl} rel="noreferrer" target="_blank"><MapPin size={14} /> {text.directions}</a>
-            ) : <span className="link-unavailable">{text.directionsUnavailable}</span>}
+            <a href={getDirectionsUrl(restaurant, location)} rel="noreferrer" target="_blank"><MapPin size={14} /> {text.directions}</a>
           </div>
         </div>
       </div>
@@ -153,7 +147,7 @@ function RestaurantCard({ restaurant, picked, highlighted, onHighlightChange, te
 function LunchRadar() {
   const [language, setLanguage] = useState('sv');
   const [query, setQuery] = useState('');
-  const [maxWalkingTime, setMaxWalkingTime] = useState('');
+  const [maxWalkingTime, setMaxWalkingTime] = useState('10');
   const [maxPrice, setMaxPrice] = useState('');
   const [cuisine, setCuisine] = useState('');
   const [vegetarianOnly, setVegetarianOnly] = useState(false);
@@ -162,8 +156,11 @@ function LunchRadar() {
   const [pickedId, setPickedId] = useState(null);
   const [highlightedRestaurantId, setHighlightedRestaurantId] = useState(null);
   const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [location, setLocation] = useState(officeCoordinates);
+  const [restaurants, setRestaurants] = useState([]);
+  const [locationStatus, setLocationStatus] = useState('locating');
   const [weather, setWeather] = useState(null);
-  const [weatherError, setWeatherError] = useState('');
+  const [weatherError, setWeatherError] = useState(false);
   const text = translations[language];
   const hungerLevel = getHungerLevel(currentTime);
   const isDangerous = currentTime.getHours() >= 13;
@@ -174,10 +171,11 @@ function LunchRadar() {
 
   useEffect(() => {
     let ignore = false;
+    let activeLocation = officeCoordinates;
 
-    async function loadWeather() {
+    async function loadWeather(coordinates) {
       try {
-        const response = await fetch('https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=59.35&lon=17.94');
+        const response = await fetch(`https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${coordinates.latitude}&lon=${coordinates.longitude}`);
         if (!response.ok) throw new Error('Weather request failed');
 
         const payload = await response.json();
@@ -234,23 +232,67 @@ function LunchRadar() {
             updatedAt: currentEntry.time,
             isRainy: /rain|shower|snow|sleet|thunder|fog/.test(String(symbolCode)),
           });
-          setWeatherError('');
+          setWeatherError(false);
         }
       } catch (error) {
         if (!ignore) {
-          setWeatherError(text.weatherUnavailable);
+          setWeatherError(true);
         }
       }
     }
 
-    loadWeather();
-    const timer = window.setInterval(loadWeather, 10 * 60 * 1000);
+    async function loadNearbyRestaurants(coordinates) {
+      try {
+        const nearbyRestaurants = await findNearbyRestaurants(coordinates);
+        if (ignore) return;
+        setRestaurants(nearbyRestaurants);
+        setLocationStatus(nearbyRestaurants.length ? 'current' : 'noNearbyRestaurants');
+      } catch (error) {
+        if (!ignore) {
+          setRestaurants([]);
+          setLocationStatus('restaurantsUnavailable');
+        }
+      }
+    }
+
+    function useOfficeLocation() {
+      if (ignore) return;
+      activeLocation = officeCoordinates;
+      setLocation(officeCoordinates);
+      setRestaurants(restaurantData.restaurants);
+      setLocationStatus('officeFallback');
+      loadWeather(activeLocation);
+    }
+
+    function useCurrentLocation(position) {
+      if (ignore) return;
+      activeLocation = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      };
+      setLocation(activeLocation);
+      setLocationStatus('loadingRestaurants');
+      loadWeather(activeLocation);
+      loadNearbyRestaurants(activeLocation);
+    }
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        useCurrentLocation,
+        useOfficeLocation,
+        { maximumAge: 5 * 60 * 1000, timeout: 10_000 },
+      );
+    } else {
+      useOfficeLocation();
+    }
+
+    const timer = window.setInterval(() => loadWeather(activeLocation), 10 * 60 * 1000);
 
     return () => {
       ignore = true;
       window.clearInterval(timer);
     };
-  }, [text.weatherUnavailable]);
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentTime(new Date()), 30_000);
@@ -264,7 +306,7 @@ function LunchRadar() {
   }, [text]);
 
   const pickAnnouncement = useMemo(() => {
-    const choice = restaurantData.restaurants.find((restaurant) => restaurant.id === pickedId);
+    const choice = restaurants.find((restaurant) => restaurant.id === pickedId);
     if (!choice) return '';
 
     const details = [
@@ -273,16 +315,25 @@ function LunchRadar() {
     ].filter(Boolean).join(text.pickConjunction);
 
     return text.announcement(getRestaurantName(choice, text), details);
-  }, [pickedId, text]);
+  }, [pickedId, restaurants, text]);
 
   const cuisines = useMemo(
-    () => [...new Set(restaurantData.restaurants.flatMap((restaurant) => restaurant.cuisine))].sort(),
-    [],
+    () => [...new Set(restaurants.flatMap((restaurant) => restaurant.cuisine))].sort(),
+    [restaurants],
+  );
+
+  const latestVerifiedDate = useMemo(
+    () => restaurants
+      .map((restaurant) => restaurant.lastVerified)
+      .filter(Boolean)
+      .sort()
+      .at(-1) ?? null,
+    [restaurants],
   );
 
   const filteredRestaurants = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    return restaurantData.restaurants
+    return restaurants
       .filter((restaurant) => {
         const cuisineText = restaurant.cuisine.join(' ');
         const localizedCuisine = restaurant.cuisine
@@ -304,7 +355,7 @@ function LunchRadar() {
           && matchesVegetarian && matchesVegan && matchesTakeaway;
       })
       .sort((a, b) => (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity));
-  }, [cuisine, language, maxPrice, maxWalkingTime, query, takeawayOnly, veganOnly, vegetarianOnly]);
+  }, [cuisine, language, maxPrice, maxWalkingTime, query, restaurants, takeawayOnly, veganOnly, vegetarianOnly]);
 
   const hasFilters = Boolean(
     query || maxWalkingTime || maxPrice || cuisine || vegetarianOnly || veganOnly || takeawayOnly,
@@ -322,6 +373,7 @@ function LunchRadar() {
   }
 
   function pickLunch() {
+    if (!filteredRestaurants.length) return;
     const choice = filteredRestaurants[Math.floor(Math.random() * filteredRestaurants.length)];
     setPickedId(choice.id);
     requestAnimationFrame(() => {
@@ -359,6 +411,7 @@ function LunchRadar() {
               </div>
               <h2>{text.heroSubtitle}</h2>
               <p>{text.heroDescription}</p>
+              <p aria-live="polite" className="location-status">{text.locationStatus[locationStatus]}</p>
             </div>
             <div className="hero-action">
               <div className={`hunger-meter${isDangerous ? ' is-danger' : ''}`}>
@@ -435,7 +488,7 @@ function LunchRadar() {
               </div>
 
               {weatherError ? (
-                <div className="weather-empty">{weatherError}</div>
+                <div className="weather-empty">{text.weatherUnavailable}</div>
               ) : weather ? (
                 <>
                   <div className="weather-main">
@@ -578,6 +631,7 @@ function LunchRadar() {
                 <div id={`restaurant-${restaurant.id}`} key={restaurant.id}>
                   <RestaurantCard
                     highlighted={highlightedRestaurantId === restaurant.id}
+                    location={location}
                     onHighlightChange={setHighlightedRestaurantId}
                     picked={pickedId === restaurant.id}
                     restaurant={restaurant}
@@ -589,15 +643,27 @@ function LunchRadar() {
           ) : (
             <div className="empty-state">
               <span className="empty-icon"><Search size={22} /></span>
-              <h3>{text.noMatches}</h3>
-              <p>{text.adjustFilters}</p>
-              <button className="clear-filters" onClick={clearFilters} type="button">{text.clearAllFilters}</button>
+              <h3>{locationStatus === 'locating' || locationStatus === 'loadingRestaurants'
+                ? text.locationLoading
+                : locationStatus === 'noNearbyRestaurants'
+                  ? text.noNearbyRestaurants
+                  : locationStatus === 'restaurantsUnavailable'
+                    ? text.restaurantsUnavailable
+                    : text.noMatches}</h3>
+              <p>{locationStatus === 'locating' || locationStatus === 'loadingRestaurants'
+                ? text.locationPermissionHint
+                : locationStatus === 'noNearbyRestaurants' || locationStatus === 'restaurantsUnavailable'
+                  ? text.nearbyRestaurantsHint
+                  : text.adjustFilters}</p>
+              {hasFilters && <button className="clear-filters" onClick={clearFilters} type="button">{text.clearAllFilters}</button>}
             </div>
           )}
         </section>
         <RestaurantMap
           highlightedRestaurantId={highlightedRestaurantId}
           language={language}
+          location={location}
+          locationStatus={locationStatus}
           onHighlightChange={setHighlightedRestaurantId}
           restaurants={filteredRestaurants}
         />

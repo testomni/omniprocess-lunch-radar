@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { divIcon, latLngBounds } from 'leaflet';
 import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
-import { officeCoordinates } from './config.js';
+import { getDirectionsUrl } from './location.js';
 import { getRestaurantName, translations } from './translations.js';
 import 'leaflet/dist/leaflet.css';
 
@@ -36,36 +36,30 @@ function hasCoordinates(restaurant) {
     && Math.abs(restaurant.longitude) <= 180;
 }
 
-function MapBounds({ restaurants }) {
+function MapBounds({ location, restaurants }) {
   const map = useMap();
 
   useEffect(() => {
-    if (!restaurants.length) return;
+    if (!restaurants.length) {
+      map.setView([location.latitude, location.longitude], 15);
+      return;
+    }
 
     const bounds = latLngBounds([
-      [officeCoordinates.latitude, officeCoordinates.longitude],
+      [location.latitude, location.longitude],
       ...restaurants.map((restaurant) => [restaurant.latitude, restaurant.longitude]),
     ]);
     map.fitBounds(bounds, { padding: [36, 36], maxZoom: 16 });
-  }, [map, restaurants]);
+  }, [location.latitude, location.longitude, map, restaurants]);
 
   return null;
-}
-
-function getDirectionsUrl(restaurant) {
-  if (restaurant.directionsUrl) return restaurant.directionsUrl;
-
-  const route = [
-    `${officeCoordinates.latitude},${officeCoordinates.longitude}`,
-    `${restaurant.latitude},${restaurant.longitude}`,
-  ].join(';');
-
-  return `https://www.openstreetmap.org/directions?engine=fossgis_valhalla_foot&route=${encodeURIComponent(route)}`;
 }
 
 function RestaurantMap({
   highlightedRestaurantId,
   language,
+  location,
+  locationStatus,
   onHighlightChange,
   restaurants,
 }) {
@@ -82,14 +76,22 @@ function RestaurantMap({
         <span aria-live="polite" className="map-status">
           {mappedRestaurants.length
             ? text.restaurantCount(mappedRestaurants.length)
-            : text.noCoordinates}
+            : restaurants.length
+              ? text.noCoordinates
+              : locationStatus === 'locating' || locationStatus === 'loadingRestaurants'
+                ? text.loadingRestaurants
+                : locationStatus === 'restaurantsUnavailable'
+                  ? text.restaurantsUnavailable
+                  : locationStatus === 'noNearbyRestaurants'
+                    ? text.noNearbyRestaurants
+                    : text.restaurantCount(0)}
         </span>
       </div>
 
       <div className="map-frame">
         <MapContainer
           aria-label={text.ariaLabel}
-          center={[officeCoordinates.latitude, officeCoordinates.longitude]}
+          center={[location.latitude, location.longitude]}
           scrollWheelZoom={false}
           zoom={15}
         >
@@ -97,16 +99,16 @@ function RestaurantMap({
             attribution={'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}
             url="https://tile.openstreetmap.de/{z}/{x}/{y}.png"
           />
-          <MapBounds restaurants={mappedRestaurants} />
+          <MapBounds location={location} restaurants={mappedRestaurants} />
           <Marker
             icon={officeMarkerIcon}
-            position={[officeCoordinates.latitude, officeCoordinates.longitude]}
-            title={`${text.officeTitle}, ${text.approximate.toLowerCase()}`}
+            position={[location.latitude, location.longitude]}
+            title={text.locationTitle}
           >
             <Popup>
               <div className="map-popup">
-                <strong>{text.officeTitle}</strong>
-                <span>{text.approximate}</span>
+                <strong>{text.locationTitle}</strong>
+                <span>{text.locationDescription}</span>
               </div>
             </Popup>
           </Marker>
@@ -131,7 +133,7 @@ function RestaurantMap({
                   <span>{restaurant.walkingTimeMinutes == null
                     ? text.walkingUnknown
                     : text.walkingMinutes(restaurant.walkingTimeMinutes)}</span>
-                  <a href={getDirectionsUrl(restaurant)} rel="noreferrer" target="_blank">
+                  <a href={getDirectionsUrl(restaurant, location)} rel="noreferrer" target="_blank">
                     {text.directions}
                   </a>
                 </div>

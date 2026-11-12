@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { mapNearbyRestaurants } from '../src/location.js';
+
+const origin = { latitude: 59.35, longitude: 18.06 };
+
+test('maps named OSM restaurants and sorts them by distance', () => {
+  const restaurants = mapNearbyRestaurants([
+    {
+      type: 'way',
+      id: 2,
+      center: { lat: 59.351, lon: 18.06 },
+      tags: { amenity: 'restaurant', name: 'Farther place', menu: 'javascript:alert(1)' },
+    },
+    {
+      type: 'node',
+      id: 1,
+      lat: 59.3501,
+      lon: 18.06,
+      tags: {
+        amenity: 'cafe',
+        name: 'Nearby cafe',
+        cuisine: 'coffee_shop;italian',
+        'addr:street': 'Main Street',
+        'addr:housenumber': '5',
+        'diet:vegetarian': 'yes',
+        'diet:vegan': 'only',
+        takeaway: 'yes',
+        menu: 'https://example.com/menu',
+      },
+    },
+    { type: 'node', id: 3, lat: 59.35, lon: 18.06, tags: { amenity: 'restaurant' } },
+    { type: 'node', id: 4, tags: { amenity: 'restaurant', name: 'No coordinates' } },
+  ], origin);
+
+  assert.deepEqual(restaurants.map(({ name }) => name), ['Nearby cafe', 'Farther place']);
+  assert.deepEqual(restaurants[0], {
+    id: 'osm-node-1',
+    name: 'Nearby cafe',
+    address: '5 Main Street',
+    latitude: 59.3501,
+    longitude: 18.06,
+    distanceMeters: 11,
+    walkingTimeMinutes: 1,
+    cuisine: ['Coffee Shop', 'Italian'],
+    typicalLunchPriceSek: null,
+    vegetarian: true,
+    vegan: true,
+    takeaway: true,
+    menuUrl: 'https://example.com/menu',
+    directionsUrl: `https://www.openstreetmap.org/directions?engine=fossgis_valhalla_foot&route=${encodeURIComponent('59.35,18.06;59.3501,18.06')}`,
+  });
+  assert.ok(restaurants[1].distanceMeters > restaurants[0].distanceMeters);
+  assert.equal(restaurants[1].menuUrl, null);
+});
