@@ -55,7 +55,19 @@ function MapBounds({ location, restaurants }) {
   return null;
 }
 
+function MapFocus({ focusRestaurantId, restaurants }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const restaurant = restaurants.find((item) => item.id === focusRestaurantId);
+    if (restaurant) map.flyTo([restaurant.latitude, restaurant.longitude], Math.max(map.getZoom(), 16));
+  }, [focusRestaurantId, map, restaurants]);
+
+  return null;
+}
+
 function RestaurantMap({
+  focusRestaurantId,
   highlightedRestaurantId,
   language,
   location,
@@ -100,6 +112,7 @@ function RestaurantMap({
             url="https://tile.openstreetmap.de/{z}/{x}/{y}.png"
           />
           <MapBounds location={location} restaurants={mappedRestaurants} />
+          <MapFocus focusRestaurantId={focusRestaurantId} restaurants={mappedRestaurants} />
           <Marker
             icon={officeMarkerIcon}
             position={[location.latitude, location.longitude]}
@@ -120,7 +133,7 @@ function RestaurantMap({
                 mouseout: () => onHighlightChange(null),
                 mouseover: () => onHighlightChange(restaurant.id),
               }}
-              icon={highlightedRestaurantId === restaurant.id
+              icon={highlightedRestaurantId === restaurant.id || focusRestaurantId === restaurant.id
                 ? highlightedRestaurantMarkerIcon
                 : restaurantMarkerIcon}
               key={restaurant.id}
@@ -130,6 +143,7 @@ function RestaurantMap({
               <Popup>
                 <div className="map-popup">
                   <strong>{getRestaurantName(restaurant, translations[language])}</strong>
+                  {restaurant.typicalLunchPriceSek != null && <span>~{restaurant.typicalLunchPriceSek} kr</span>}
                   <span>{restaurant.walkingTimeMinutes == null
                     ? text.walkingUnknown
                     : text.walkingMinutes(restaurant.walkingTimeMinutes)}</span>

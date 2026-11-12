@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Activity,
   ArrowUpRight,
   Check,
   ChevronDown,
@@ -15,7 +14,6 @@ import {
   Gauge,
   Leaf,
   MapPin,
-  Search,
   Sparkles,
   Sun,
   Utensils,
@@ -28,28 +26,21 @@ import RestaurantMap from './RestaurantMap.jsx';
 import { getCuisineName, getRestaurantName, translations } from './translations.js';
 import { officeCoordinates } from './config.js';
 import { findNearbyRestaurants, getDirectionsUrl } from './location.js';
+import { getHungerLevel, getLocalDateKey } from './hunger.js';
 
 const priceOptions = ['', '100', '125', '150', '175', '200', '250'];
-const radarContactPositions = [
-  [34, 29],
-  [66, 38],
-  [47, 57],
-  [72, 70],
-  [28, 73],
-  [57, 21],
-];
 
 function formatDate(value, options, locale) {
   return new Date(`${value}T12:00:00`).toLocaleDateString(locale, options);
 }
 
-function getHungerLevel(date) {
-  const minutesSinceMidnight = date.getHours() * 60 + date.getMinutes();
-  const rampStart = 8 * 60;
-  const fullHunger = 12 * 60 + 45;
-  return Math.min(100, Math.max(0, Math.round(
-    ((minutesSinceMidnight - rampStart) / (fullHunger - rampStart)) * 100,
-  )));
+function getRadarPosition(restaurant, location) {
+  const metersPerDegree = 111_320;
+  const eastMeters = (restaurant.longitude - location.longitude)
+    * metersPerDegree * Math.cos((location.latitude * Math.PI) / 180);
+  const northMeters = (restaurant.latitude - location.latitude) * metersPerDegree;
+  const position = (meters) => Math.min(94, Math.max(6, 50 + (meters / 1200) * 44));
+  return { left: `${position(eastMeters)}%`, top: `${position(-northMeters)}%` };
 }
 
 function getWeatherIcon(symbolCode, size = 24) {
@@ -146,7 +137,6 @@ function RestaurantCard({ restaurant, location, picked, highlighted, onHighlight
 
 function LunchRadar() {
   const [language, setLanguage] = useState('sv');
-  const [query, setQuery] = useState('');
   const [maxWalkingTime, setMaxWalkingTime] = useState('10');
   const [maxPrice, setMaxPrice] = useState('');
   const [cuisine, setCuisine] = useState('');
@@ -155,6 +145,8 @@ function LunchRadar() {
   const [takeawayOnly, setTakeawayOnly] = useState(false);
   const [pickedId, setPickedId] = useState(null);
   const [highlightedRestaurantId, setHighlightedRestaurantId] = useState(null);
+  const [selectedRadarRestaurantId, setSelectedRadarRestaurantId] = useState(null);
+  const [lunchEatenDate, setLunchEatenDate] = useState(null);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [location, setLocation] = useState(officeCoordinates);
   const [restaurants, setRestaurants] = useState([]);
@@ -162,8 +154,9 @@ function LunchRadar() {
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState(false);
   const text = translations[language];
-  const hungerLevel = getHungerLevel(currentTime);
-  const isDangerous = currentTime.getHours() >= 13;
+  const hasEatenLunchToday = lunchEatenDate === getLocalDateKey(currentTime);
+  const hungerLevel = getHungerLevel(currentTime, hasEatenLunchToday);
+  const isDangerous = hungerLevel === 100;
   const radarTime = currentTime.toLocaleTimeString(text.locale, {
     hour: '2-digit',
     minute: '2-digit',
@@ -332,16 +325,8 @@ function LunchRadar() {
   );
 
   const filteredRestaurants = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
     return restaurants
       .filter((restaurant) => {
-        const cuisineText = restaurant.cuisine.join(' ');
-        const localizedCuisine = restaurant.cuisine
-          .map((item) => getCuisineName(item, text))
-          .join(' ');
-        const localizedName = getRestaurantName(restaurant, text);
-        const matchesQuery = !normalizedQuery
-          || `${restaurant.name} ${localizedName} ${cuisineText} ${localizedCuisine}`.toLowerCase().includes(normalizedQuery);
         const matchesWalkingTime = !maxWalkingTime
           || (restaurant.walkingTimeMinutes != null && restaurant.walkingTimeMinutes <= Number(maxWalkingTime));
         const matchesPrice = !maxPrice
@@ -351,18 +336,17 @@ function LunchRadar() {
         const matchesVegan = !veganOnly || restaurant.vegan === true;
         const matchesTakeaway = !takeawayOnly || restaurant.takeaway === true;
 
-        return matchesQuery && matchesWalkingTime && matchesPrice && matchesCuisine
+        return matchesWalkingTime && matchesPrice && matchesCuisine
           && matchesVegetarian && matchesVegan && matchesTakeaway;
       })
       .sort((a, b) => (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity));
-  }, [cuisine, language, maxPrice, maxWalkingTime, query, restaurants, takeawayOnly, veganOnly, vegetarianOnly]);
+  }, [cuisine, maxPrice, maxWalkingTime, restaurants, takeawayOnly, veganOnly, vegetarianOnly]);
 
   const hasFilters = Boolean(
-    query || maxWalkingTime || maxPrice || cuisine || vegetarianOnly || veganOnly || takeawayOnly,
+    maxWalkingTime || maxPrice || cuisine || vegetarianOnly || veganOnly || takeawayOnly,
   );
 
   function clearFilters() {
-    setQuery('');
     setMaxWalkingTime('');
     setMaxPrice('');
     setCuisine('');
@@ -370,7 +354,14 @@ function LunchRadar() {
     setVeganOnly(false);
     setTakeawayOnly(false);
     setPickedId(null);
+    setSelectedRadarRestaurantId(null);
   }
+
+  useEffect(() => {
+    if (!filteredRestaurants.some((restaurant) => restaurant.id === selectedRadarRestaurantId)) {
+      setSelectedRadarRestaurantId(null);
+    }
+  }, [filteredRestaurants, selectedRadarRestaurantId]);
 
   function pickLunch() {
     if (!filteredRestaurants.length) return;
@@ -414,23 +405,36 @@ function LunchRadar() {
               <p aria-live="polite" className="location-status">{text.locationStatus[locationStatus]}</p>
             </div>
             <div className="hero-action">
-              <div className={`hunger-meter${isDangerous ? ' is-danger' : ''}`}>
-                <div className="hunger-meter-heading">
-                  <span><Gauge aria-hidden="true" size={18} /> {text.hungerLabel}</span>
-                  <strong>{hungerLevel}%</strong>
+              <div className="hunger-meter-row">
+                <div className={`hunger-meter${isDangerous ? ' is-danger' : ''}`}>
+                  <div className="hunger-meter-heading">
+                    <span><Gauge aria-hidden="true" size={18} /> {text.hungerLabel}</span>
+                    <strong>{hungerLevel}%</strong>
+                  </div>
+                  <div
+                    aria-label={text.hungerLabel}
+                    aria-valuemax="100"
+                    aria-valuemin="0"
+                    aria-valuenow={hungerLevel}
+                    aria-valuetext={text.hungerValue(hungerLevel)}
+                    className="hunger-meter-track"
+                    role="progressbar"
+                  >
+                    <span style={{ width: `${hungerLevel}%` }} />
+                  </div>
+                  <p aria-live="polite">{hasEatenLunchToday
+                    ? text.lunchEatenStatus
+                    : isDangerous ? text.dangerMessage : text.hungerStatus(hungerLevel)}</p>
                 </div>
-                <div
-                  aria-label={text.hungerLabel}
-                  aria-valuemax="100"
-                  aria-valuemin="0"
-                  aria-valuenow={hungerLevel}
-                  aria-valuetext={text.hungerValue(hungerLevel)}
-                  className="hunger-meter-track"
-                  role="progressbar"
+                <button
+                  aria-pressed={hasEatenLunchToday}
+                  className="lunch-eaten-button"
+                  onClick={() => setLunchEatenDate(getLocalDateKey(currentTime))}
+                  type="button"
                 >
-                  <span style={{ width: `${hungerLevel}%` }} />
-                </div>
-                <p aria-live="polite">{isDangerous ? text.dangerMessage : text.hungerStatus(hungerLevel)}</p>
+                  <Check aria-hidden="true" size={15} />
+                  {text.lunchEatenButton}
+                </button>
               </div>
               <div className="hero-walk-time">
                 <Clock3 size={21} />
@@ -455,23 +459,28 @@ function LunchRadar() {
               </div>
               <span className="radar-live"><span /> {text.radarLive}</span>
             </div>
-            <div aria-label={text.instrumentationLabel} className="instrument-strip" role="group">
-              <div className="instrument-unit"><Activity aria-hidden="true" size={15} /><span>{text.flowMeasurement}</span></div>
-              <div className="instrument-unit"><Wind aria-hidden="true" size={15} /><span>{text.gasAnalysis}</span></div>
-              <div className="instrument-unit"><Gauge aria-hidden="true" size={15} /><span>{text.pressureMeasurement}</span></div>
-            </div>
-            <div aria-hidden="true" className="radar-screen">
+            <div aria-label={text.radarContactsLabel} className="radar-screen">
               <div className="radar-sweep" />
               <span className="radar-crosshair radar-crosshair-horizontal" />
               <span className="radar-crosshair radar-crosshair-vertical" />
-              {filteredRestaurants.slice(0, radarContactPositions.length).map((restaurant, index) => (
-                <span
-                  className={`radar-contact radar-contact-${index + 1}`}
+              {filteredRestaurants.map((restaurant) => (
+                <button
+                  aria-label={text.radarRestaurantLabel(getRestaurantName(restaurant, text))}
+                  aria-pressed={selectedRadarRestaurantId === restaurant.id}
+                  className={`radar-contact${highlightedRestaurantId === restaurant.id
+                    || selectedRadarRestaurantId === restaurant.id ? ' is-highlighted' : ''}`}
                   key={restaurant.id}
-                  style={{
-                    left: `${radarContactPositions[index][0]}%`,
-                    top: `${radarContactPositions[index][1]}%`,
+                  onClick={() => {
+                    const selectedId = selectedRadarRestaurantId === restaurant.id ? null : restaurant.id;
+                    setSelectedRadarRestaurantId(selectedId);
+                    setHighlightedRestaurantId(selectedId);
                   }}
+                  onFocus={() => setHighlightedRestaurantId(restaurant.id)}
+                  onMouseEnter={() => setHighlightedRestaurantId(restaurant.id)}
+                  onMouseLeave={() => setHighlightedRestaurantId(selectedRadarRestaurantId)}
+                  style={getRadarPosition(restaurant, location)}
+                  title={getRestaurantName(restaurant, text)}
+                  type="button"
                 />
               ))}
               <span className="radar-origin" />
@@ -530,22 +539,6 @@ function LunchRadar() {
 
       <section aria-label={text.filterLabel} className="filter-panel">
         <div className="filter-top-row">
-          <label className="search-box">
-            <Search aria-hidden="true" size={18} />
-            <span className="sr-only">{text.searchLabel}</span>
-            <input
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={text.searchLabel}
-              type="search"
-              value={query}
-            />
-            {query && (
-              <button aria-label={text.clearSearch} className="clear-search" onClick={() => setQuery('')} type="button">
-                ×
-              </button>
-            )}
-          </label>
-
           <div aria-label={text.maxWalk} className="walking-control" role="group">
             <span className="filter-label"><Clock3 size={16} /> {text.maxWalk}</span>
             <div className="segmented-control">
@@ -630,7 +623,8 @@ function LunchRadar() {
               {filteredRestaurants.map((restaurant) => (
                 <div id={`restaurant-${restaurant.id}`} key={restaurant.id}>
                   <RestaurantCard
-                    highlighted={highlightedRestaurantId === restaurant.id}
+                    highlighted={highlightedRestaurantId === restaurant.id
+                      || selectedRadarRestaurantId === restaurant.id}
                     location={location}
                     onHighlightChange={setHighlightedRestaurantId}
                     picked={pickedId === restaurant.id}
@@ -642,7 +636,7 @@ function LunchRadar() {
             </div>
           ) : (
             <div className="empty-state">
-              <span className="empty-icon"><Search size={22} /></span>
+              <span className="empty-icon"><Utensils size={22} /></span>
               <h3>{locationStatus === 'locating' || locationStatus === 'loadingRestaurants'
                 ? text.locationLoading
                 : locationStatus === 'noNearbyRestaurants'
@@ -665,6 +659,7 @@ function LunchRadar() {
           location={location}
           locationStatus={locationStatus}
           onHighlightChange={setHighlightedRestaurantId}
+          focusRestaurantId={selectedRadarRestaurantId}
           restaurants={filteredRestaurants}
         />
       </div>
