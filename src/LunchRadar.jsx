@@ -20,7 +20,6 @@ import {
   Vegan,
   Wind,
 } from 'lucide-react';
-import restaurantData from './data/restaurants.json';
 import omniProcessLogo from './assets/omniprocess-logo.png';
 import RestaurantMap from './RestaurantMap.jsx';
 import { getCuisineName, getRestaurantName, translations } from './translations.js';
@@ -80,6 +79,13 @@ function getGoogleMapsUrl(place) {
     ?? `https://www.google.com/maps/search/?api=1&query_place_id=${encodeURIComponent(place.id)}`;
 }
 
+function getGoogleMapsSearchUrl(restaurant) {
+  const search = new URL('https://www.google.com/maps/search/');
+  search.searchParams.set('api', '1');
+  search.searchParams.set('query', `${restaurant.name} ${restaurant.address ?? ''}`);
+  return search.href;
+}
+
 function getWeatherIcon(symbolCode, size = 24) {
   const code = symbolCode ?? 'cloudy';
   if (code.includes('clearsky') || code.includes('fair')) return <Sun size={size} />;
@@ -115,7 +121,7 @@ function DietFilter({ checked, label, onChange, icon: Icon }) {
 
 function RestaurantCard({ restaurant, location, picked, highlighted, onHighlightChange, text }) {
   const googlePlace = restaurant.googlePlace;
-  const googleMapsUrl = googlePlace ? getGoogleMapsUrl(googlePlace) : '';
+  const googleMapsUrl = googlePlace ? getGoogleMapsUrl(googlePlace) : getGoogleMapsSearchUrl(restaurant);
   const hasDedicatedMenu = Boolean(restaurant.menuUrl && restaurant.menuUrl !== restaurant.websiteUrl);
   return (
     <article
@@ -159,37 +165,36 @@ function RestaurantCard({ restaurant, location, picked, highlighted, onHighlight
           )}
         </div>
 
-        {googlePlace && (
-          <div className="google-review-panel">
-            <div className="google-review-heading">
-              <strong>{googlePlace.rating == null
-                ? text.googleRatingUnavailable
-                : `★ ${googlePlace.rating.toLocaleString(text.locale, { maximumFractionDigits: 1 })}`}</strong>
-              {googlePlace.userRatingCount != null && <span>{text.googleReviewCount(googlePlace.userRatingCount)}</span>}
-              <a className="google-maps-attribution" href={googleMapsUrl} rel="noreferrer" target="_blank" translate="no">Google Maps</a>
-            </div>
-            {googlePlace.reviews?.length > 0 && (
-              <details className="google-review-details">
-                <summary>{text.googleReviewHighlights(googlePlace.reviews.length)}</summary>
-                <div className="google-review-list">
-                  {googlePlace.reviews.map((review, index) => (
-                    <blockquote key={`${review.authorAttribution?.displayName ?? 'review'}-${index}`}>
-                      <p>{typeof review.text === 'string' ? review.text : review.text?.text}</p>
-                      <footer>
-                        {review.authorAttribution?.uri ? (
-                          <a href={review.authorAttribution.uri} rel="noreferrer" target="_blank">
-                            {review.authorAttribution.displayName}
-                          </a>
-                        ) : review.authorAttribution?.displayName}
-                        {review.relativePublishTimeDescription && <span> · {review.relativePublishTimeDescription}</span>}
-                      </footer>
-                    </blockquote>
-                  ))}
-                </div>
-              </details>
-            )}
+        <div className="google-review-panel">
+          <div className="google-review-heading">
+            <span className="google-rating-label">{text.googleRating}</span>
+            <strong>{googlePlace?.rating == null
+              ? text.googleRatingUnavailable
+              : `★ ${googlePlace.rating.toLocaleString(text.locale, { maximumFractionDigits: 1 })}`}</strong>
+            {googlePlace?.userRatingCount != null && <span>{text.googleReviewCount(googlePlace.userRatingCount)}</span>}
+            <a className="google-maps-attribution" href={googleMapsUrl} rel="noreferrer" target="_blank" translate="no">Google Maps</a>
           </div>
-        )}
+          {googlePlace?.reviews?.length > 0 && (
+            <details className="google-review-details">
+              <summary>{text.googleReviewHighlights(googlePlace.reviews.length)}</summary>
+              <div className="google-review-list">
+                {googlePlace.reviews.map((review, index) => (
+                  <blockquote key={`${review.authorAttribution?.displayName ?? 'review'}-${index}`}>
+                    <p>{typeof review.text === 'string' ? review.text : review.text?.text}</p>
+                    <footer>
+                      {review.authorAttribution?.uri ? (
+                        <a href={review.authorAttribution.uri} rel="noreferrer" target="_blank">
+                          {review.authorAttribution.displayName}
+                        </a>
+                      ) : review.authorAttribution?.displayName}
+                      {review.relativePublishTimeDescription && <span> · {review.relativePublishTimeDescription}</span>}
+                    </footer>
+                  </blockquote>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
 
         <div className="card-footer">
           <span className="verified-date">{restaurant.lastVerified ? text.verified(formatDate(restaurant.lastVerified, {
@@ -214,7 +219,6 @@ function LunchRadar() {
   const [language, setLanguage] = useState('sv');
   const [maxWalkingTime, setMaxWalkingTime] = useState('10');
   const [maxPrice, setMaxPrice] = useState('');
-  const [minimumGoogleRating, setMinimumGoogleRating] = useState('');
   const [cuisine, setCuisine] = useState('');
   const [vegetarianOnly, setVegetarianOnly] = useState(false);
   const [veganOnly, setVeganOnly] = useState(false);
@@ -313,17 +317,16 @@ function LunchRadar() {
       }
     }
 
-    async function loadNearbyRestaurants(coordinates, fallbackRestaurants = []) {
+    async function loadNearbyRestaurants(coordinates, successStatus = 'current') {
       try {
         const nearbyRestaurants = await findNearbyRestaurants(coordinates);
         if (ignore) return;
         setRestaurants(nearbyRestaurants);
-        if (!nearbyRestaurants.length) setLocationStatus('noNearbyRestaurants');
-        else setLocationStatus(fallbackRestaurants.length ? 'officeFallback' : 'current');
+        setLocationStatus(nearbyRestaurants.length ? successStatus : 'noNearbyRestaurants');
       } catch (error) {
         if (!ignore) {
-          setRestaurants(fallbackRestaurants);
-          setLocationStatus(fallbackRestaurants.length ? 'officeFallback' : 'restaurantsUnavailable');
+          setRestaurants([]);
+          setLocationStatus('restaurantsUnavailable');
         }
       }
     }
@@ -333,10 +336,10 @@ function LunchRadar() {
       activeLocation = officeCoordinates;
       setLocation(officeCoordinates);
       setGoogleReviewLocation(officeCoordinates);
-      setRestaurants(restaurantData.restaurants);
-      setLocationStatus('officeFallback');
+      setRestaurants([]);
+      setLocationStatus('loadingRestaurants');
       loadWeather(activeLocation);
-      loadNearbyRestaurants(officeCoordinates, restaurantData.restaurants);
+      loadNearbyRestaurants(officeCoordinates, 'officeFallback');
     }
 
     function useCurrentLocation(position) {
@@ -478,18 +481,14 @@ function LunchRadar() {
         const matchesVegetarian = !vegetarianOnly || restaurant.vegetarian === true;
         const matchesVegan = !veganOnly || restaurant.vegan === true;
         const matchesTakeaway = !takeawayOnly || restaurant.takeaway === true;
-        const matchesGoogleRating = !minimumGoogleRating
-          || (restaurant.googlePlace?.rating != null
-            && restaurant.googlePlace.rating >= Number(minimumGoogleRating));
-
         return matchesWalkingTime && matchesPrice && matchesCuisine
-          && matchesVegetarian && matchesVegan && matchesTakeaway && matchesGoogleRating;
+          && matchesVegetarian && matchesVegan && matchesTakeaway;
       })
       .sort((a, b) => (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity));
-  }, [cuisine, maxPrice, maxWalkingTime, minimumGoogleRating, restaurantsWithGooglePlaces, takeawayOnly, veganOnly, vegetarianOnly]);
+  }, [cuisine, maxPrice, maxWalkingTime, restaurantsWithGooglePlaces, takeawayOnly, veganOnly, vegetarianOnly]);
 
   const hasFilters = Boolean(
-    maxWalkingTime || maxPrice || minimumGoogleRating || cuisine || vegetarianOnly || veganOnly || takeawayOnly,
+    maxWalkingTime || maxPrice || cuisine || vegetarianOnly || veganOnly || takeawayOnly,
   );
   const weatherAdvice = weather
     ? getLunchWeatherAdvice(weather.symbolCode, weather.temperature, weather.windSpeed)
@@ -498,7 +497,6 @@ function LunchRadar() {
   function clearFilters() {
     setMaxWalkingTime('');
     setMaxPrice('');
-    setMinimumGoogleRating('');
     setCuisine('');
     setVegetarianOnly(false);
     setVeganOnly(false);
@@ -583,12 +581,8 @@ function LunchRadar() {
                   type="button"
                 >
                   <Check aria-hidden="true" size={15} />
-                  {text.lunchEatenButton}
+                  {hasEatenLunchToday ? text.lunchEatenDoneButton : text.lunchEatenButton}
                 </button>
-              </div>
-              <div className="hero-walk-time">
-                <Clock3 size={21} />
-                <span><strong>10 {text.minutes}</strong><span>{text.maxWalkShort}</span></span>
               </div>
               <button
                 className="pick-button hero-pick-button"
@@ -732,18 +726,6 @@ function LunchRadar() {
                 <option value="">{text.allPrices}</option>
                 {priceOptions.filter(Boolean).map((price) => (
                   <option key={price} value={price}>{text.upTo(price)}</option>
-                ))}
-              </select>
-              <ChevronDown aria-hidden="true" size={14} />
-            </span>
-          </label>
-          <label className="select-control">
-            <span className="filter-label">{text.googleRating}</span>
-            <span className="select-wrap">
-              <select onChange={(event) => setMinimumGoogleRating(event.target.value)} value={minimumGoogleRating}>
-                <option value="">{text.allGoogleRatings}</option>
-                {[3, 3.5, 4, 4.5].map((rating) => (
-                  <option key={rating} value={rating}>{text.minimumGoogleRating(rating)}</option>
                 ))}
               </select>
               <ChevronDown aria-hidden="true" size={14} />
