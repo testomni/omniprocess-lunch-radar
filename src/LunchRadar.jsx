@@ -182,11 +182,40 @@ function LunchRadar() {
 
         const payload = await response.json();
         const timeseries = payload.properties?.timeseries ?? [];
-        const currentEntry = timeseries.find((entry) => new Date(entry.time) >= new Date()) ?? timeseries[0];
+        const now = new Date();
+        const currentEntry = timeseries.find((entry) => new Date(entry.time) >= now) ?? timeseries[0];
 
         if (!currentEntry?.data?.instant?.details) {
           throw new Error('No weather data available');
         }
+
+        const hourlyForecast = [1, 2, 3].flatMap((hoursAhead) => {
+          const targetTime = new Date(now);
+          targetTime.setMinutes(0, 0, 0);
+          targetTime.setHours(targetTime.getHours() + hoursAhead);
+
+          const entry = timeseries.reduce((closest, candidate) => {
+            const candidateTime = new Date(candidate.time);
+            if (candidateTime < now || !candidate.data?.instant?.details) return closest;
+            if (!closest || Math.abs(candidateTime - targetTime) < Math.abs(new Date(closest.time) - targetTime)) {
+              return candidate;
+            }
+            return closest;
+          }, null);
+
+          if (!entry || Math.abs(new Date(entry.time) - targetTime) > 30 * 60 * 1000) return [];
+
+          const symbolCode = entry.data.next_1_hours?.summary?.symbol_code
+            ?? entry.data.next_6_hours?.summary?.symbol_code
+            ?? entry.data.next_12_hours?.summary?.symbol_code
+            ?? 'cloudy';
+
+          return [{
+            time: entry.time,
+            temperature: Number(entry.data.instant.details.air_temperature ?? 0),
+            symbolCode,
+          }];
+        });
 
         const details = currentEntry.data.instant.details;
         const temperature = Number(details.air_temperature ?? 0);
@@ -201,6 +230,7 @@ function LunchRadar() {
             temperature,
             windSpeed,
             symbolCode,
+            hourlyForecast,
             updatedAt: currentEntry.time,
             isRainy: /rain|shower|snow|sleet|thunder|fog/.test(String(symbolCode)),
           });
@@ -421,6 +451,21 @@ function LunchRadar() {
                       {weather.temperature >= 5 && weather.temperature <= 25 && !weather.isRainy && weather.windSpeed <= 10 ? text.weatherGood : text.weatherBad}
                     </span>
                   </div>
+                  {weather.hourlyForecast.length > 0 && (
+                    <div className="weather-forecast">
+                      <div className="weather-forecast-title">{text.weatherForecastTitle}</div>
+                      <div className="weather-forecast-hours">
+                        {weather.hourlyForecast.map((forecast) => (
+                          <div className="weather-forecast-hour" key={forecast.time}>
+                            <span>{new Date(forecast.time).toLocaleTimeString(text.locale, { hour: '2-digit' })}</span>
+                            {getWeatherIcon(forecast.symbolCode, 17)}
+                            <strong>{Math.round(forecast.temperature)}°</strong>
+                            <span>{getWeatherStatusText(forecast.symbolCode, text)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="weather-empty">{text.weatherLoading}</div>
