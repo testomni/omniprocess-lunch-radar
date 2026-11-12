@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mapNearbyRestaurants } from '../src/location.js';
+import { findNearbyRestaurants, mapNearbyRestaurants } from '../src/location.js';
 
 const origin = { latitude: 59.35, longitude: 18.06 };
 
@@ -52,4 +52,37 @@ test('maps named OSM restaurants and sorts them by distance', () => {
   });
   assert.ok(restaurants[1].distanceMeters > restaurants[0].distanceMeters);
   assert.equal(restaurants[1].menuUrl, null);
+});
+
+test('requests named nearby places with tags and center coordinates', async () => {
+  const originalFetch = globalThis.fetch;
+  let request;
+  globalThis.fetch = async (url, options) => {
+    request = { url, options };
+    return {
+      ok: true,
+      json: async () => ({
+        elements: [{
+          type: 'node',
+          id: 8,
+          lat: 59.3502,
+          lon: 18.06,
+          tags: { amenity: 'restaurant', name: 'Test restaurant' },
+        }],
+      }),
+    };
+  };
+
+  try {
+    const restaurants = await findNearbyRestaurants(origin);
+    const query = new URLSearchParams(request.options.body).get('data');
+
+    assert.equal(request.url, 'https://overpass-api.de/api/interpreter');
+    assert.equal(request.options.method, 'POST');
+    assert.match(query, /nwr\(around:1200,59\.35,18\.06\)/);
+    assert.match(query, /out tags center;/);
+    assert.equal(restaurants[0].name, 'Test restaurant');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

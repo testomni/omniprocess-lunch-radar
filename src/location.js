@@ -92,7 +92,7 @@ export async function findNearbyRestaurants(origin) {
     '(',
     `nwr(around:${restaurantRadiusMeters},${origin.latitude},${origin.longitude})["amenity"~"^(restaurant|fast_food|cafe|food_court)$"]["name"];`,
     ');',
-    'out center tags;',
+    'out tags center;',
   ].join('\n');
   const response = await fetch('https://overpass-api.de/api/interpreter', {
     method: 'POST',
