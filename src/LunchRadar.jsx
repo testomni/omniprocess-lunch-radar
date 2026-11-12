@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowUpRight,
   Check,
@@ -19,6 +19,7 @@ import {
   Utensils,
   Vegan,
   Wind,
+  X,
 } from 'lucide-react';
 import omniProcessLogo from './assets/omniprocess-logo.png';
 import RestaurantMap from './RestaurantMap.jsx';
@@ -167,7 +168,6 @@ function RestaurantCard({ restaurant, location, picked, highlighted, onHighlight
 
         <div className="google-review-panel">
           <div className="google-review-heading">
-            <span className="google-rating-label">{text.googleRating}</span>
             <strong>{googlePlace?.rating == null
               ? text.googleRatingUnavailable
               : `★ ${googlePlace.rating.toLocaleString(text.locale, { maximumFractionDigits: 1 })}`}</strong>
@@ -216,6 +216,8 @@ function RestaurantCard({ restaurant, location, picked, highlighted, onHighlight
 }
 
 function LunchRadar() {
+  const pickDialogRef = useRef(null);
+  const pickButtonRef = useRef(null);
   const [language, setLanguage] = useState('sv');
   const [maxWalkingTime, setMaxWalkingTime] = useState('10');
   const [maxPrice, setMaxPrice] = useState('');
@@ -224,6 +226,7 @@ function LunchRadar() {
   const [veganOnly, setVeganOnly] = useState(false);
   const [takeawayOnly, setTakeawayOnly] = useState(false);
   const [pickedId, setPickedId] = useState(null);
+  const [isPickDialogOpen, setIsPickDialogOpen] = useState(false);
   const [highlightedRestaurantId, setHighlightedRestaurantId] = useState(null);
   const [selectedRadarRestaurantId, setSelectedRadarRestaurantId] = useState(null);
   const [lunchEatenDate, setLunchEatenDate] = useState(null);
@@ -412,6 +415,14 @@ function LunchRadar() {
     document.querySelector('meta[name="description"]')?.setAttribute('content', text.description);
   }, [text]);
 
+  useEffect(() => {
+    const dialog = pickDialogRef.current;
+    if (!dialog) return;
+
+    if (isPickDialogOpen && !dialog.open) dialog.showModal();
+    else if (!isPickDialogOpen && dialog.open) dialog.close();
+  }, [isPickDialogOpen]);
+
   const pickAnnouncement = useMemo(() => {
     const choice = restaurants.find((restaurant) => restaurant.id === pickedId);
     if (!choice) return '';
@@ -492,6 +503,7 @@ function LunchRadar() {
   const hasFilters = Boolean(
     maxWalkingTime || maxPrice || cuisine || vegetarianOnly || veganOnly || takeawayOnly,
   );
+  const pickedRestaurant = filteredRestaurants.find((restaurant) => restaurant.id === pickedId) ?? null;
   const weatherAdvice = weather
     ? getLunchWeatherAdvice(weather.symbolCode, weather.temperature, weather.windSpeed)
     : null;
@@ -504,6 +516,7 @@ function LunchRadar() {
     setVeganOnly(false);
     setTakeawayOnly(false);
     setPickedId(null);
+    setIsPickDialogOpen(false);
     setSelectedRadarRestaurantId(null);
   }
 
@@ -513,16 +526,17 @@ function LunchRadar() {
     }
   }, [filteredRestaurants, selectedRadarRestaurantId]);
 
+  useEffect(() => {
+    if (isPickDialogOpen && !filteredRestaurants.some((restaurant) => restaurant.id === pickedId)) {
+      setIsPickDialogOpen(false);
+    }
+  }, [filteredRestaurants, isPickDialogOpen, pickedId]);
+
   function pickLunch() {
     if (!filteredRestaurants.length) return;
     const choice = filteredRestaurants[Math.floor(Math.random() * filteredRestaurants.length)];
     setPickedId(choice.id);
-    requestAnimationFrame(() => {
-      document.getElementById(`restaurant-${choice.id}`)?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
-    });
+    setIsPickDialogOpen(true);
   }
 
   return (
@@ -592,9 +606,10 @@ function LunchRadar() {
                 className="pick-button hero-pick-button"
                 disabled={!filteredRestaurants.length}
                 onClick={pickLunch}
+                ref={pickButtonRef}
                 type="button"
               >
-                <Sparkles size={18} /> {text.pickLunch} <ArrowUpRight size={17} />
+                <Sparkles aria-hidden="true" size={18} /> {text.pickLunch} <Utensils aria-hidden="true" size={17} />
               </button>
               <span className="hero-pick-note">{text.matchingRestaurants(filteredRestaurants.length)}</span>
             </div>
@@ -688,6 +703,46 @@ function LunchRadar() {
           </aside>
         </div>
       </section>
+
+      <dialog
+        aria-labelledby="lunch-pick-dialog-title"
+        className="lunch-pick-dialog"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) event.currentTarget.close();
+        }}
+        onClose={() => {
+          setIsPickDialogOpen(false);
+          pickButtonRef.current?.focus();
+        }}
+        ref={pickDialogRef}
+      >
+        {pickedRestaurant && (
+          <div className="lunch-pick-dialog-content">
+            <div className="lunch-pick-dialog-heading">
+              <h2 id="lunch-pick-dialog-title">{text.pickDialogTitle}</h2>
+              <button
+                aria-label={text.closeDialog}
+                className="lunch-pick-dialog-close"
+                onClick={() => pickDialogRef.current?.close()}
+                type="button"
+              >
+                <X aria-hidden="true" size={19} />
+              </button>
+            </div>
+            <RestaurantCard
+              highlighted={highlightedRestaurantId === pickedRestaurant.id}
+              location={location}
+              onHighlightChange={setHighlightedRestaurantId}
+              picked
+              restaurant={pickedRestaurant}
+              text={text}
+            />
+            <button className="pick-button lunch-pick-dialog-action" onClick={pickLunch} type="button">
+              <Sparkles aria-hidden="true" size={16} /> {text.pickAnother}
+            </button>
+          </div>
+        )}
+      </dialog>
 
       <section aria-label={text.filterLabel} className="filter-panel">
         <div className="filter-toolbar">

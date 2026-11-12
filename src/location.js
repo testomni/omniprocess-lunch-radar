@@ -1,4 +1,5 @@
 const restaurantRadiusMeters = 1200;
+const permanentlyClosedRestaurantNames = new Set(['drottningholms pizzeria']);
 const fallbackRestaurantImages = {
   asian: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=1200&q=80',
   burger: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=1200&q=80',
@@ -112,7 +113,7 @@ function getLunchPrice(tags, amenity, cuisine) {
 function toRestaurant(element, origin) {
   const coordinates = getCoordinates(element);
   const tags = element.tags ?? {};
-  if (!coordinates || !tags.name || isInactiveRestaurant(tags)) return null;
+  if (!coordinates || !tags.name || isInactiveRestaurant(tags, tags.name)) return null;
 
   const distanceMeters = Math.round(getDistanceMeters(origin, coordinates));
   const address = tags['addr:full']
@@ -156,13 +157,15 @@ function toRestaurant(element, origin) {
   };
 }
 
-function isInactiveRestaurant(tags) {
+function isInactiveRestaurant(tags, name) {
   const isAffirmative = (value) => ['yes', 'true', '1', 'temporary', 'permanent', 'closed', 'permanently_closed', 'temporarily_closed']
     .includes(String(value ?? '').toLowerCase());
   const hasLifecycleAmenity = ['disused:amenity', 'abandoned:amenity', 'closed:amenity']
     .some((key) => Boolean(tags[key]));
+  const normalizedName = name.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
-  return hasLifecycleAmenity
+  return [...permanentlyClosedRestaurantNames].some((closedName) => normalizedName.includes(closedName))
+    || hasLifecycleAmenity
     || ['disused', 'abandoned', 'closed'].some((key) => isAffirmative(tags[key]));
 }
 

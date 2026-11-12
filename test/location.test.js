@@ -136,6 +136,13 @@ test('excludes restaurants tagged as closed or disused', () => {
     },
     {
       type: 'node',
+      id: 13,
+      lat: 59.35025,
+      lon: 18.06,
+      tags: { amenity: 'restaurant', name: 'Drottningholms Pizzeria' },
+    },
+    {
+      type: 'node',
       id: 12,
       lat: 59.3503,
       lon: 18.06,
