@@ -126,6 +126,11 @@ function DietFilter({ checked, label, onChange, icon: Icon }) {
 function RestaurantCard({ restaurant, location, picked, highlighted, onHighlightChange, text }) {
   const googlePlace = restaurant.googlePlace;
   const googleMapsUrl = googlePlace ? getGoogleMapsUrl(googlePlace) : getGoogleMapsSearchUrl(restaurant);
+  const hasGoogleReviewDetails = Boolean(googlePlace && (
+    googlePlace.rating != null
+    || googlePlace.userRatingCount > 0
+    || googlePlace.reviews?.length
+  ));
   const hasDedicatedMenu = Boolean(restaurant.menuUrl && restaurant.menuUrl !== restaurant.websiteUrl);
   return (
     <article
@@ -171,35 +176,37 @@ function RestaurantCard({ restaurant, location, picked, highlighted, onHighlight
           )}
         </div>
 
-        <div className="google-review-panel">
-          <div className="google-review-heading">
-            {googlePlace?.rating != null && (
-              <strong>★ {googlePlace.rating.toLocaleString(text.locale, { maximumFractionDigits: 1 })}</strong>
+        {hasGoogleReviewDetails && (
+          <div className="google-review-panel">
+            <div className="google-review-heading">
+              {googlePlace.rating != null && (
+                <strong>★ {googlePlace.rating.toLocaleString(text.locale, { maximumFractionDigits: 1 })}</strong>
+              )}
+              {googlePlace.userRatingCount != null && <span>{text.googleReviewCount(googlePlace.userRatingCount)}</span>}
+              <a className="google-maps-attribution" href={googleMapsUrl} rel="noreferrer" target="_blank" translate="no">Google Maps</a>
+            </div>
+            {googlePlace.reviews?.length > 0 && (
+              <details className="google-review-details">
+                <summary>{text.googleReviewHighlights(googlePlace.reviews.length)}</summary>
+                <div className="google-review-list">
+                  {googlePlace.reviews.map((review, index) => (
+                    <blockquote key={`${review.authorAttribution?.displayName ?? 'review'}-${index}`}>
+                      <p>{typeof review.text === 'string' ? review.text : review.text?.text}</p>
+                      <footer>
+                        {review.authorAttribution?.uri ? (
+                          <a href={review.authorAttribution.uri} rel="noreferrer" target="_blank">
+                            {review.authorAttribution.displayName}
+                          </a>
+                        ) : review.authorAttribution?.displayName}
+                        {review.relativePublishTimeDescription && <span> · {review.relativePublishTimeDescription}</span>}
+                      </footer>
+                    </blockquote>
+                  ))}
+                </div>
+              </details>
             )}
-            {googlePlace?.userRatingCount != null && <span>{text.googleReviewCount(googlePlace.userRatingCount)}</span>}
-            <a className="google-maps-attribution" href={googleMapsUrl} rel="noreferrer" target="_blank" translate="no">Google Maps</a>
           </div>
-          {googlePlace?.reviews?.length > 0 && (
-            <details className="google-review-details">
-              <summary>{text.googleReviewHighlights(googlePlace.reviews.length)}</summary>
-              <div className="google-review-list">
-                {googlePlace.reviews.map((review, index) => (
-                  <blockquote key={`${review.authorAttribution?.displayName ?? 'review'}-${index}`}>
-                    <p>{typeof review.text === 'string' ? review.text : review.text?.text}</p>
-                    <footer>
-                      {review.authorAttribution?.uri ? (
-                        <a href={review.authorAttribution.uri} rel="noreferrer" target="_blank">
-                          {review.authorAttribution.displayName}
-                        </a>
-                      ) : review.authorAttribution?.displayName}
-                      {review.relativePublishTimeDescription && <span> · {review.relativePublishTimeDescription}</span>}
-                    </footer>
-                  </blockquote>
-                ))}
-              </div>
-            </details>
-          )}
-        </div>
+        )}
 
         <div className="card-footer">
           <span className="verified-date">{restaurant.lastVerified ? text.verified(formatDate(restaurant.lastVerified, {
@@ -606,7 +613,7 @@ function LunchRadar() {
                   type="button"
                 >
                   <Check aria-hidden="true" size={15} />
-                  {manualLunchEaten ? text.lunchEatenDoneButton : text.lunchEatenButton}
+                  {text.lunchEatenButton}
                 </button>
               </div>
               <button

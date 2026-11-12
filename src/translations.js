@@ -18,8 +18,7 @@ export const translations = {
           ? 'Dags att börja planera lunchen.'
           : 'Hungern börjar bli akut.',
     dangerMessage: 'Nu måste du gå och äta lunch – det börjar bli farligt!',
-    lunchEatenButton: 'Ätit lunch idag',
-    lunchEatenDoneButton: 'Lugn, jag har redan ätit lunch',
+    lunchEatenButton: 'Lugn, jag har redan ätit lunch!',
     lunchEatenStatus: 'Lunchen är avklarad för idag.',
     lunchTimeOver: 'Lunchtiden är över för idag, kom tillbaka imorgon för goda måltider.',
     radarSystem: 'LUNCHSYSTEM / 01',
@@ -173,8 +172,7 @@ export const translations = {
           ? 'Start thinking about lunch.'
           : 'Hunger is getting serious.',
     dangerMessage: 'You must go eat lunch now — it’s getting dangerous!',
-    lunchEatenButton: 'Lunch eaten today',
-    lunchEatenDoneButton: 'Relax, I already had lunch',
+    lunchEatenButton: 'Relax, I already had lunch!',
     lunchEatenStatus: 'Lunch is checked off for today.',
     lunchTimeOver: 'Lunch time over for today, come back tomorrow for tasty meals.',
     radarSystem: 'LUNCH SYSTEM / 01',
