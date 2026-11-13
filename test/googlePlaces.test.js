@@ -1,70 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  fetchDrivingTimes,
   fetchNearbyGooglePlaces,
   isGooglePlaceClosed,
-  isWithinDrivingTimeLimit,
   matchGooglePlace,
 } from '../src/googlePlaces.js';
-
-test('includes routes up to 10 minutes and excludes longer or unavailable routes', () => {
-  assert.equal(isWithinDrivingTimeLimit(9), true);
-  assert.equal(isWithinDrivingTimeLimit(10), true);
-  assert.equal(isWithinDrivingTimeLimit(11), false);
-  assert.equal(isWithinDrivingTimeLimit(null), false);
-});
-
-test('computes driving times with the Google Routes matrix and marks unreachable places', async () => {
-  const originalWindow = globalThis.window;
-  let routeRequest;
-  globalThis.window = {
-    google: {
-      maps: {
-        importLibrary: async (libraryName) => {
-          assert.equal(libraryName, 'routes');
-          return {
-            RouteMatrix: {
-              computeRouteMatrix: async (request) => {
-                routeRequest = request;
-                return {
-                  matrix: {
-                    rows: [{
-                      items: [
-                        { condition: 'ROUTE_EXISTS', durationMillis: 60_001 },
-                        { condition: 'ROUTE_NOT_FOUND', durationMillis: undefined },
-                      ],
-                    }],
-                  },
-                };
-              },
-            },
-          };
-        },
-      },
-    },
-  };
-
-  try {
-    const times = await fetchDrivingTimes(
-      { latitude: 59.35, longitude: 18.06 },
-      [
-        { latitude: 59.351, longitude: 18.061 },
-        { latitude: 59.352, longitude: 18.062 },
-      ],
-      'restricted-test-key',
-    );
-
-    assert.deepEqual(times, [2, null]);
-    assert.deepEqual(routeRequest.origins, [{ lat: 59.35, lng: 18.06 }]);
-    assert.equal(routeRequest.travelMode, 'DRIVING');
-    assert.equal(routeRequest.fields.includes('durationMillis'), true);
-    assert.equal(routeRequest.destinations.length, 2);
-  } finally {
-    if (originalWindow === undefined) delete globalThis.window;
-    else globalThis.window = originalWindow;
-  }
-});
 
 test('matches Google Places by name and proximity, not name alone', () => {
   const restaurant = {

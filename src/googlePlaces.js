@@ -109,44 +109,6 @@ export async function fetchNearbyGooglePlaces(location, apiKey) {
   }));
 }
 
-export async function fetchDrivingTimes(origin, restaurants, apiKey) {
-  if (!restaurants.length) return [];
-  if (!apiKey) throw new Error('A Google Maps API key is required for driving routes.');
-
-  const { RouteMatrix } = await loadGoogleLibrary(apiKey, 'routes');
-  const times = [];
-
-  for (let start = 0; start < restaurants.length; start += 625) {
-    const destinations = restaurants.slice(start, start + 625);
-    const { matrix } = await RouteMatrix.computeRouteMatrix({
-      origins: [{ lat: origin.latitude, lng: origin.longitude }],
-      destinations: destinations.map(({ latitude, longitude }) => ({
-        lat: latitude,
-        lng: longitude,
-      })),
-      travelMode: 'DRIVING',
-      routingPreference: 'TRAFFIC_UNAWARE',
-      fields: ['durationMillis', 'condition'],
-    });
-    const routeItems = matrix?.rows?.[0]?.items;
-    if (!routeItems || routeItems.length !== destinations.length) {
-      throw new Error('Google Routes returned an incomplete driving-time matrix.');
-    }
-
-    times.push(...routeItems.map((route) => (
-      route.condition === 'ROUTE_EXISTS' && Number.isFinite(route.durationMillis)
-        ? Math.ceil(route.durationMillis / 60_000)
-        : null
-    )));
-  }
-
-  return times;
-}
-
-export function isWithinDrivingTimeLimit(minutes) {
-  return Number.isFinite(minutes) && minutes <= 10;
-}
-
 export function isGooglePlaceClosed(place) {
   return ['CLOSED_PERMANENTLY', 'CLOSED_TEMPORARILY'].includes(place?.businessStatus);
 }

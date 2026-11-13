@@ -35,12 +35,11 @@ import {
 } from './location.js';
 import { getHungerLevel, getHungerPhase, getLocalDateKey } from './hunger.js';
 import {
-  fetchDrivingTimes,
   fetchNearbyGooglePlaces,
   isGooglePlaceClosed,
-  isWithinDrivingTimeLimit,
   matchGooglePlace,
 } from './googlePlaces.js';
+import { fetchDrivingTimes, isWithinDrivingTimeLimit } from './routing.js';
 import { getLunchWeatherAdvice } from './weather.js';
 
 const priceOptions = ['', '100', '125', '150', '175', '200', '250'];
@@ -403,14 +402,9 @@ function LunchRadar() {
   useEffect(() => {
     if (!locationReady || !locationSource) return undefined;
     let ignore = false;
+    const routeRequestController = new AbortController();
 
     async function loadNearbyRestaurants() {
-      if (travelMode === 'drive' && !googlePlacesApiKey) {
-        setRestaurants([]);
-        setLocationStatus('drivingKeyRequired');
-        return;
-      }
-
       setRestaurants([]);
       setLocationStatus(travelMode === 'drive' ? 'loadingDrivingRoutes' : 'loadingRestaurants');
       try {
@@ -434,7 +428,9 @@ function LunchRadar() {
         }
 
         setLocationStatus('calculatingDrivingTimes');
-        const drivingTimes = await fetchDrivingTimes(location, nearbyRestaurants, googlePlacesApiKey);
+        const drivingTimes = await fetchDrivingTimes(location, nearbyRestaurants, {
+          signal: routeRequestController.signal,
+        });
         if (ignore) return;
         setRestaurants(nearbyRestaurants.map((restaurant, index) => ({
           ...restaurant,
@@ -452,6 +448,7 @@ function LunchRadar() {
     loadNearbyRestaurants();
     return () => {
       ignore = true;
+      routeRequestController.abort();
     };
   }, [location, locationReady, locationSource, travelMode]);
 
@@ -921,6 +918,14 @@ function LunchRadar() {
 
           <p className="results-meta">
             <a href="https://www.openstreetmap.org/copyright" rel="noreferrer" target="_blank">{text.restaurantSource}</a>
+            {travelMode === 'drive' && (
+              <>
+                <span />
+                <a href="https://project-osrm.org/" rel="noreferrer" target="_blank">{text.routingSource}</a>
+                <span />
+                <a href="https://www.openstreetmap.org/fixthemap" rel="noreferrer" target="_blank">{text.fixMap}</a>
+              </>
+            )}
             {latestVerifiedDate && (
               <>
                 <span />
