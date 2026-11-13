@@ -630,6 +630,12 @@ function LunchRadar() {
             </a>
             <span className="brand-product">{text.productName}</span>
           </div>
+          <div className="language-toolbar">
+            <div aria-label={text.languageLabel} className="language-toggle" role="group">
+              <button aria-pressed={language === 'sv'} onClick={() => setLanguage('sv')} type="button">Svenska</button>
+              <button aria-pressed={language === 'en'} onClick={() => setLanguage('en')} type="button">English</button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -639,12 +645,6 @@ function LunchRadar() {
             <div className="intro-copy">
               <span className="eyebrow"><MapPin size={15} /> {text.heroEyebrow}</span>
               <h1>{text.heroTitlePrefix}<span className="hero-title-highlight">{text.heroTitleHighlight}</span>{text.heroTitleSuffix}</h1>
-              <div className="language-toolbar">
-                <div aria-label={text.languageLabel} className="language-toggle" role="group">
-                  <button aria-pressed={language === 'sv'} onClick={() => setLanguage('sv')} type="button">Svenska</button>
-                  <button aria-pressed={language === 'en'} onClick={() => setLanguage('en')} type="button">English</button>
-                </div>
-              </div>
               <h2>{text.heroSubtitle}</h2>
               <p>{text.heroDescription}</p>
               <p aria-live="polite" className="location-status">{text.locationStatus[locationStatus]}</p>
