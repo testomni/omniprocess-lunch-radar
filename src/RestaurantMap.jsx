@@ -74,6 +74,7 @@ function RestaurantMap({
   locationStatus,
   onHighlightChange,
   restaurants,
+  travelMode,
 }) {
   const text = translations[language].map;
   const mappedRestaurants = useMemo(
@@ -90,9 +91,13 @@ function RestaurantMap({
             ? text.restaurantCount(mappedRestaurants.length)
             : restaurants.length
               ? text.noCoordinates
-              : locationStatus === 'locating' || locationStatus === 'loadingRestaurants'
-                ? text.loadingRestaurants
+              : locationStatus === 'locating'
+                || locationStatus === 'loadingRestaurants'
+                || locationStatus === 'loadingDrivingRoutes'
+                || locationStatus === 'calculatingDrivingTimes'
+                  ? travelMode === 'drive' ? text.loadingDrivingRoutes : text.loadingRestaurants
                 : locationStatus === 'restaurantsUnavailable'
+                    || locationStatus === 'drivingUnavailable'
                   ? text.restaurantsUnavailable
                   : locationStatus === 'noNearbyRestaurants'
                     ? text.noNearbyRestaurants
@@ -144,10 +149,14 @@ function RestaurantMap({
                 <div className="map-popup">
                   <strong>{getRestaurantName(restaurant, translations[language])}</strong>
                   {restaurant.typicalLunchPriceSek != null && <span>~{restaurant.typicalLunchPriceSek} kr</span>}
-                  <span>{restaurant.walkingTimeMinutes == null
-                    ? text.walkingUnknown
-                    : text.walkingMinutes(restaurant.walkingTimeMinutes)}</span>
-                  <a href={getDirectionsUrl(restaurant, location)} rel="noreferrer" target="_blank">
+                  <span>{travelMode === 'drive'
+                    ? restaurant.drivingTimeMinutes == null
+                      ? text.drivingUnknown
+                      : text.drivingMinutes(restaurant.drivingTimeMinutes)
+                    : restaurant.walkingTimeMinutes == null
+                      ? text.walkingUnknown
+                      : text.walkingMinutes(restaurant.walkingTimeMinutes)}</span>
+                  <a href={getDirectionsUrl(restaurant, location, travelMode)} rel="noreferrer" target="_blank">
                     {text.directions}
                   </a>
                 </div>

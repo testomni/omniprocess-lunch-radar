@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   findNearbyRestaurants,
+  drivingSearchRadiusMeters,
   getCuisineFallbackImage,
   getDirectionsUrl,
   getMenuSearchUrl,
@@ -137,6 +138,33 @@ test('uses contact and place tags to construct an address', () => {
   assert.equal(restaurant.address, '7 Side Street, 123 45, Stockholm');
 });
 
+test('preserves unknown dietary details and accepts a wider driving search radius', async () => {
+  const [restaurant] = mapNearbyRestaurants([{
+    type: 'node',
+    id: 15,
+    lat: 59.3501,
+    lon: 18.06,
+    tags: { amenity: 'restaurant', name: 'Unknown options restaurant', 'diet:vegetarian': 'no' },
+  }], origin);
+
+  assert.equal(restaurant.vegetarian, false);
+  assert.equal(restaurant.vegan, null);
+  assert.equal(restaurant.takeaway, null);
+
+  const originalFetch = globalThis.fetch;
+  let query;
+  globalThis.fetch = async (url) => {
+    query = new URL(url).searchParams.get('data');
+    return { ok: true, json: async () => ({ elements: [] }) };
+  };
+  try {
+    await findNearbyRestaurants(origin, drivingSearchRadiusMeters);
+    assert.match(query, /nwr\(around:10000,59\.35,18\.06\)/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('opens Google Maps walking directions to the restaurant', () => {
   const directionsUrl = new URL(getDirectionsUrl({
     name: 'Test Restaurant',
@@ -152,6 +180,16 @@ test('opens Google Maps walking directions to the restaurant', () => {
   assert.equal(directionsUrl.searchParams.get('destination'), '59.351,18.061');
   assert.equal(directionsUrl.searchParams.get('destination_place_id'), 'google-place-1');
   assert.equal(directionsUrl.searchParams.get('travelmode'), 'walking');
+});
+
+test('opens Google Maps driving directions when requested', () => {
+  const directionsUrl = new URL(getDirectionsUrl({
+    name: 'Test Restaurant',
+    latitude: 59.351,
+    longitude: 18.061,
+  }, origin, 'drive'));
+
+  assert.equal(directionsUrl.searchParams.get('travelmode'), 'driving');
 });
 
 test('excludes restaurants tagged as closed or disused', () => {

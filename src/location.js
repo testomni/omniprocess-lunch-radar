@@ -1,4 +1,5 @@
 const restaurantRadiusMeters = 1200;
+export const drivingSearchRadiusMeters = 10_000;
 const permanentlyClosedRestaurantNames = new Set(['drottningholms pizzeria']);
 const fallbackRestaurantImages = {
   asian: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=1200&q=80',
@@ -162,9 +163,15 @@ function toRestaurant(element, origin) {
     cuisine,
     typicalLunchPriceSek: getLunchPrice(tags, tags.amenity, cuisine),
     imageUrl,
-    vegetarian: ['yes', 'only'].includes(tags['diet:vegetarian']),
-    vegan: ['yes', 'only'].includes(tags['diet:vegan']),
-    takeaway: tags.takeaway === 'yes' || tags['takeaway:yes'] === 'yes',
+    vegetarian: tags['diet:vegetarian'] === 'yes' || tags['diet:vegetarian'] === 'only'
+      ? true
+      : tags['diet:vegetarian'] === 'no' ? false : null,
+    vegan: tags['diet:vegan'] === 'yes' || tags['diet:vegan'] === 'only'
+      ? true
+      : tags['diet:vegan'] === 'no' ? false : null,
+    takeaway: tags.takeaway === 'yes' || tags['takeaway:yes'] === 'yes'
+      ? true
+      : tags.takeaway === 'no' || tags['takeaway:yes'] === 'no' ? false : null,
     menuUrl: getExternalUrl(tags.menu)
       ?? getExternalUrl(tags['menu:url'])
       ?? getExternalUrl(tags['contact:menu']),
@@ -197,11 +204,11 @@ export function getMenuSearchUrl(restaurant) {
   return search.href;
 }
 
-export async function findNearbyRestaurants(origin) {
+export async function findNearbyRestaurants(origin, radiusMeters = restaurantRadiusMeters) {
   const query = [
     '[out:json][timeout:25];',
     '(',
-    `nwr(around:${restaurantRadiusMeters},${origin.latitude},${origin.longitude})["amenity"~"^(restaurant|fast_food|cafe|food_court)$"]["name"];`,
+    `nwr(around:${radiusMeters},${origin.latitude},${origin.longitude})["amenity"~"^(restaurant|fast_food|cafe|food_court)$"]["name"];`,
     ');',
     'out tags center;',
   ].join('\n');
@@ -214,7 +221,7 @@ export async function findNearbyRestaurants(origin) {
   return mapNearbyRestaurants(payload.elements ?? [], origin);
 }
 
-export function getDirectionsUrl(restaurant, origin) {
+export function getDirectionsUrl(restaurant, origin, travelMode = 'walk') {
   const directionsUrl = new URL('https://www.google.com/maps/dir/');
   directionsUrl.searchParams.set('api', '1');
   if (Number.isFinite(origin?.latitude) && Number.isFinite(origin?.longitude)) {
@@ -224,7 +231,7 @@ export function getDirectionsUrl(restaurant, origin) {
     ? `${restaurant.latitude},${restaurant.longitude}`
     : [restaurant.name, restaurant.address].filter(Boolean).join(', ');
   directionsUrl.searchParams.set('destination', destination);
-  directionsUrl.searchParams.set('travelmode', 'walking');
+  directionsUrl.searchParams.set('travelmode', travelMode === 'drive' ? 'driving' : 'walking');
   if (restaurant.googlePlace?.id) {
     directionsUrl.searchParams.set('destination_place_id', restaurant.googlePlace.id);
   }

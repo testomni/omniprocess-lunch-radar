@@ -1,12 +1,10 @@
-let googlePlacesLibraryPromise;
+let googleMapsApiPromise;
 
-function loadGooglePlacesLibrary(apiKey) {
-  if (window.google?.maps?.importLibrary) {
-    return window.google.maps.importLibrary('places');
-  }
-  if (googlePlacesLibraryPromise) return googlePlacesLibraryPromise;
+function loadGoogleMapsApi(apiKey) {
+  if (window.google?.maps?.importLibrary) return Promise.resolve();
+  if (googleMapsApiPromise) return googleMapsApiPromise;
 
-  googlePlacesLibraryPromise = new Promise((resolve, reject) => {
+  googleMapsApiPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
     const scriptUrl = new URL('https://maps.googleapis.com/maps/api/js');
     scriptUrl.searchParams.set('key', apiKey);
@@ -14,19 +12,22 @@ function loadGooglePlacesLibrary(apiKey) {
     scriptUrl.searchParams.set('libraries', 'places');
     script.src = scriptUrl.href;
     script.async = true;
-    script.addEventListener('load', () => {
-      window.google.maps.importLibrary('places').then(resolve, reject);
-    }, { once: true });
+    script.addEventListener('load', () => resolve(), { once: true });
     script.addEventListener('error', () => reject(new Error('Google Maps JavaScript API could not be loaded.')), {
       once: true,
     });
     document.head.append(script);
   }).catch((error) => {
-    googlePlacesLibraryPromise = null;
+    googleMapsApiPromise = null;
     throw error;
   });
 
-  return googlePlacesLibraryPromise;
+  return googleMapsApiPromise;
+}
+
+async function loadGoogleLibrary(apiKey, libraryName) {
+  await loadGoogleMapsApi(apiKey);
+  return window.google.maps.importLibrary(libraryName);
 }
 
 function getDistanceMeters(origin, destination) {
@@ -62,7 +63,7 @@ function getNameSimilarity(first, second) {
 }
 
 export async function fetchNearbyGooglePlaces(location, apiKey) {
-  const { Place } = await loadGooglePlacesLibrary(apiKey);
+  const { Place } = await loadGoogleLibrary(apiKey, 'places');
   const { places = [] } = await Place.searchNearby({
     fields: [
       'id',
@@ -106,6 +107,44 @@ export async function fetchNearbyGooglePlaces(location, apiKey) {
     primaryTypeDisplayName: { text: place.primaryTypeDisplayName ?? '' },
     types: place.types ?? [],
   }));
+}
+
+export async function fetchDrivingTimes(origin, restaurants, apiKey) {
+  if (!restaurants.length) return [];
+  if (!apiKey) throw new Error('A Google Maps API key is required for driving routes.');
+
+  const { RouteMatrix } = await loadGoogleLibrary(apiKey, 'routes');
+  const times = [];
+
+  for (let start = 0; start < restaurants.length; start += 625) {
+    const destinations = restaurants.slice(start, start + 625);
+    const { matrix } = await RouteMatrix.computeRouteMatrix({
+      origins: [{ lat: origin.latitude, lng: origin.longitude }],
+      destinations: destinations.map(({ latitude, longitude }) => ({
+        lat: latitude,
+        lng: longitude,
+      })),
+      travelMode: 'DRIVING',
+      routingPreference: 'TRAFFIC_UNAWARE',
+      fields: ['durationMillis', 'condition'],
+    });
+    const routeItems = matrix?.rows?.[0]?.items;
+    if (!routeItems || routeItems.length !== destinations.length) {
+      throw new Error('Google Routes returned an incomplete driving-time matrix.');
+    }
+
+    times.push(...routeItems.map((route) => (
+      route.condition === 'ROUTE_EXISTS' && Number.isFinite(route.durationMillis)
+        ? Math.ceil(route.durationMillis / 60_000)
+        : null
+    )));
+  }
+
+  return times;
+}
+
+export function isWithinDrivingTimeLimit(minutes) {
+  return Number.isFinite(minutes) && minutes <= 10;
 }
 
 export function isGooglePlaceClosed(place) {

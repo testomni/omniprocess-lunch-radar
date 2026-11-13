@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowUpRight,
+  Car,
   Check,
   ChevronDown,
   Clock3,
@@ -26,13 +27,20 @@ import RestaurantMap from './RestaurantMap.jsx';
 import { getCuisineName, getRestaurantName, translations } from './translations.js';
 import { officeCoordinates } from './config.js';
 import {
+  drivingSearchRadiusMeters,
   findNearbyRestaurants,
   getCuisineFallbackImage,
   getDirectionsUrl,
   getMenuSearchUrl,
 } from './location.js';
 import { getHungerLevel, getHungerPhase, getLocalDateKey } from './hunger.js';
-import { fetchNearbyGooglePlaces, isGooglePlaceClosed, matchGooglePlace } from './googlePlaces.js';
+import {
+  fetchDrivingTimes,
+  fetchNearbyGooglePlaces,
+  isGooglePlaceClosed,
+  isWithinDrivingTimeLimit,
+  matchGooglePlace,
+} from './googlePlaces.js';
 import { getLunchWeatherAdvice } from './weather.js';
 
 const priceOptions = ['', '100', '125', '150', '175', '200', '250'];
@@ -123,7 +131,9 @@ function DietFilter({ checked, label, onChange, icon: Icon }) {
   );
 }
 
-function RestaurantCard({ restaurant, location, picked, highlighted, onHighlightChange, text }) {
+function RestaurantCard({
+  restaurant, location, picked, highlighted, onHighlightChange, text, travelMode,
+}) {
   const googlePlace = restaurant.googlePlace;
   const googleMapsUrl = googlePlace ? getGoogleMapsUrl(googlePlace) : getGoogleMapsSearchUrl(restaurant);
   const hasGoogleReviewDetails = Boolean(googlePlace && (
@@ -149,21 +159,31 @@ function RestaurantCard({ restaurant, location, picked, highlighted, onHighlight
         ) : (
           <span aria-hidden="true" className="image-placeholder"><Utensils size={30} /></span>
         )}
-        <span className="walk-badge"><Clock3 size={14} /> {restaurant.walkingTimeMinutes == null ? text.walkingUnknown : text.walkingMinutes(restaurant.walkingTimeMinutes)}</span>
+        <span className="walk-badge">
+          {travelMode === 'drive' ? <Car size={14} /> : <Clock3 size={14} />}
+          {travelMode === 'drive'
+            ? restaurant.drivingTimeMinutes == null
+              ? text.drivingUnknown
+              : text.drivingMinutes(restaurant.drivingTimeMinutes)
+            : restaurant.walkingTimeMinutes == null
+              ? text.walkingUnknown
+              : text.walkingMinutes(restaurant.walkingTimeMinutes)}
+        </span>
         {picked && <span className="picked-badge"><Sparkles size={14} /> {text.picked}</span>}
         <span className="cuisine-badge">{restaurant.cuisine.length
           ? restaurant.cuisine.map((item) => getCuisineName(item, text)).join(', ')
           : text.cuisineUnknown}</span>
       </div>
 
+      <p className="restaurant-address">{restaurant.address && !/^Placeholder address \d+$/.test(restaurant.address)
+        ? <a href={googleMapsUrl} rel="noreferrer" target="_blank">{restaurant.address}</a>
+        : <a className="address-fallback-link" href={googleMapsUrl} rel="noreferrer" target="_blank">{text.findAddress}</a>}</p>
+
       <div className="restaurant-details">
         <div className="card-heading">
           <h3>{getRestaurantName(restaurant, text)}</h3>
           <span className="price">{restaurant.typicalLunchPriceSek == null ? text.priceUnknown : `~${restaurant.typicalLunchPriceSek} kr`}</span>
         </div>
-        <p className="price-note">{restaurant.address && !/^Placeholder address \d+$/.test(restaurant.address)
-          ? restaurant.address
-          : <a className="address-fallback-link" href={googleMapsUrl} rel="noreferrer" target="_blank">{text.findAddress}</a>}</p>
 
         <div className="restaurant-tags" aria-label={text.dietaryLabel}>
           {restaurant.vegetarian && <span className="info-tag"><Leaf size={13} /> {text.vegetarian}</span>}
@@ -171,9 +191,15 @@ function RestaurantCard({ restaurant, location, picked, highlighted, onHighlight
           {restaurant.takeaway && (
             <span className="info-tag"><Check size={13} /> {text.takeaway}</span>
           )}
-          {!restaurant.vegetarian && !restaurant.vegan && !restaurant.takeaway && (
+          {[restaurant.vegetarian, restaurant.vegan, restaurant.takeaway]
+            .every((option) => option == null) && (
             <span className="no-options">{text.dietaryUnknown}</span>
           )}
+          {[restaurant.vegetarian, restaurant.vegan, restaurant.takeaway]
+            .some((option) => option == null)
+            && [restaurant.vegetarian, restaurant.vegan, restaurant.takeaway]
+              .some((option) => option != null)
+            && <span className="no-options">{text.dietaryPartial}</span>}
         </div>
 
         {hasGoogleReviewDetails && (
@@ -219,7 +245,7 @@ function RestaurantCard({ restaurant, location, picked, highlighted, onHighlight
             {restaurant.websiteUrl && (!hasDedicatedMenu || restaurant.websiteUrl !== restaurant.menuUrl)
               ? <a href={restaurant.websiteUrl} rel="noreferrer" target="_blank">{text.website} <ArrowUpRight size={14} /></a>
               : null}
-            <a href={getDirectionsUrl(restaurant, location)} rel="noreferrer" target="_blank"><MapPin size={14} /> {text.directions}</a>
+            <a href={getDirectionsUrl(restaurant, location, travelMode)} rel="noreferrer" target="_blank"><MapPin size={14} /> {text.directions}</a>
           </div>
         </div>
       </div>
@@ -231,6 +257,7 @@ function LunchRadar() {
   const pickDialogRef = useRef(null);
   const pickButtonRef = useRef(null);
   const [language, setLanguage] = useState('sv');
+  const [travelMode, setTravelMode] = useState('walk');
   const [maxWalkingTime, setMaxWalkingTime] = useState('10');
   const [maxPrice, setMaxPrice] = useState('');
   const [cuisine, setCuisine] = useState('');
@@ -244,6 +271,8 @@ function LunchRadar() {
   const [lunchEatenDate, setLunchEatenDate] = useState(null);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [location, setLocation] = useState(officeCoordinates);
+  const [locationReady, setLocationReady] = useState(false);
+  const [locationSource, setLocationSource] = useState(null);
   const [restaurants, setRestaurants] = useState([]);
   const [googlePlaces, setGooglePlaces] = useState([]);
   const [googleReviewLocation, setGoogleReviewLocation] = useState(null);
@@ -333,29 +362,16 @@ function LunchRadar() {
       }
     }
 
-    async function loadNearbyRestaurants(coordinates, successStatus = 'current') {
-      try {
-        const nearbyRestaurants = await findNearbyRestaurants(coordinates);
-        if (ignore) return;
-        setRestaurants(nearbyRestaurants);
-        setLocationStatus(nearbyRestaurants.length ? successStatus : 'noNearbyRestaurants');
-      } catch (error) {
-        if (!ignore) {
-          setRestaurants([]);
-          setLocationStatus('restaurantsUnavailable');
-        }
-      }
-    }
-
     function useOfficeLocation() {
       if (ignore) return;
       activeLocation = officeCoordinates;
       setLocation(officeCoordinates);
+      setLocationSource('officeFallback');
+      setLocationReady(true);
       setGoogleReviewLocation(officeCoordinates);
       setRestaurants([]);
       setLocationStatus('loadingRestaurants');
       loadWeather(activeLocation);
-      loadNearbyRestaurants(officeCoordinates, 'officeFallback');
     }
 
     function useCurrentLocation(position) {
@@ -365,10 +381,11 @@ function LunchRadar() {
         longitude: position.coords.longitude,
       };
       setLocation(activeLocation);
+      setLocationSource('current');
+      setLocationReady(true);
       setGoogleReviewLocation(activeLocation);
       setLocationStatus('loadingRestaurants');
       loadWeather(activeLocation);
-      loadNearbyRestaurants(activeLocation);
     }
 
     if (navigator.geolocation) {
@@ -388,6 +405,61 @@ function LunchRadar() {
       window.clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    if (!locationReady || !locationSource) return undefined;
+    let ignore = false;
+
+    async function loadNearbyRestaurants() {
+      if (travelMode === 'drive' && !googlePlacesApiKey) {
+        setRestaurants([]);
+        setLocationStatus('drivingKeyRequired');
+        return;
+      }
+
+      setRestaurants([]);
+      setLocationStatus(travelMode === 'drive' ? 'loadingDrivingRoutes' : 'loadingRestaurants');
+      try {
+        const nearbyRestaurants = await findNearbyRestaurants(
+          location,
+          travelMode === 'drive' ? drivingSearchRadiusMeters : undefined,
+        );
+        if (ignore) return;
+        if (travelMode === 'walk') {
+          setRestaurants(nearbyRestaurants);
+          setLocationStatus(nearbyRestaurants.length
+            ? locationSource
+            : 'noNearbyRestaurants');
+          return;
+        }
+
+        if (!nearbyRestaurants.length) {
+          setRestaurants([]);
+          setLocationStatus('noNearbyRestaurants');
+          return;
+        }
+
+        setLocationStatus('calculatingDrivingTimes');
+        const drivingTimes = await fetchDrivingTimes(location, nearbyRestaurants, googlePlacesApiKey);
+        if (ignore) return;
+        setRestaurants(nearbyRestaurants.map((restaurant, index) => ({
+          ...restaurant,
+          drivingTimeMinutes: drivingTimes[index],
+        })));
+        setLocationStatus(locationSource === 'officeFallback' ? 'officeDriving' : 'driving');
+      } catch (error) {
+        if (ignore) return;
+        console.error('Nearby restaurants could not be loaded for the selected travel mode.', error);
+        setRestaurants([]);
+        setLocationStatus(travelMode === 'drive' ? 'drivingUnavailable' : 'restaurantsUnavailable');
+      }
+    }
+
+    loadNearbyRestaurants();
+    return () => {
+      ignore = true;
+    };
+  }, [location, locationReady, locationSource, travelMode]);
 
   useEffect(() => {
     if (!googlePlacesApiKey || !googleReviewLocation) return undefined;
@@ -440,11 +512,13 @@ function LunchRadar() {
 
     const details = [
       choice.typicalLunchPriceSek == null ? null : `~${choice.typicalLunchPriceSek} kr`,
-      choice.walkingTimeMinutes == null ? null : text.walkingMinutes(choice.walkingTimeMinutes),
+      travelMode === 'drive'
+        ? choice.drivingTimeMinutes == null ? null : text.drivingMinutes(choice.drivingTimeMinutes)
+        : choice.walkingTimeMinutes == null ? null : text.walkingMinutes(choice.walkingTimeMinutes),
     ].filter(Boolean).join(text.pickConjunction);
 
     return text.announcement(getRestaurantName(choice, text), details);
-  }, [pickedId, restaurants, text]);
+  }, [pickedId, restaurants, text, travelMode]);
 
   const restaurantsWithGooglePlaces = useMemo(
     () => restaurants.map((restaurant) => {
@@ -498,8 +572,10 @@ function LunchRadar() {
   const filteredRestaurants = useMemo(() => {
     return restaurantsWithGooglePlaces
       .filter((restaurant) => {
-        const matchesWalkingTime = !maxWalkingTime
-          || (restaurant.walkingTimeMinutes != null && restaurant.walkingTimeMinutes <= Number(maxWalkingTime));
+        const matchesWalkingTime = travelMode === 'drive'
+          ? isWithinDrivingTimeLimit(restaurant.drivingTimeMinutes)
+          : !maxWalkingTime
+            || (restaurant.walkingTimeMinutes != null && restaurant.walkingTimeMinutes <= Number(maxWalkingTime));
         const matchesPrice = !maxPrice
           || (restaurant.typicalLunchPriceSek != null && restaurant.typicalLunchPriceSek <= Number(maxPrice));
         const matchesCuisine = !cuisine || restaurant.cuisine.includes(cuisine);
@@ -510,10 +586,10 @@ function LunchRadar() {
           && matchesVegetarian && matchesVegan && matchesTakeaway;
       })
       .sort((a, b) => (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity));
-  }, [cuisine, maxPrice, maxWalkingTime, restaurantsWithGooglePlaces, takeawayOnly, veganOnly, vegetarianOnly]);
+  }, [cuisine, maxPrice, maxWalkingTime, restaurantsWithGooglePlaces, takeawayOnly, travelMode, veganOnly, vegetarianOnly]);
 
   const hasFilters = Boolean(
-    maxWalkingTime || maxPrice || cuisine || vegetarianOnly || veganOnly || takeawayOnly,
+    maxWalkingTime || maxPrice || cuisine || vegetarianOnly || veganOnly || takeawayOnly || travelMode === 'drive',
   );
   const pickedRestaurant = filteredRestaurants.find((restaurant) => restaurant.id === pickedId) ?? null;
   const weatherAdvice = weather
@@ -521,6 +597,7 @@ function LunchRadar() {
     : null;
 
   function clearFilters() {
+    setTravelMode('walk');
     setMaxWalkingTime('');
     setMaxPrice('');
     setCuisine('');
@@ -750,6 +827,7 @@ function LunchRadar() {
               picked
               restaurant={pickedRestaurant}
               text={text}
+              travelMode={travelMode}
             />
             <button className="pick-button lunch-pick-dialog-action" onClick={pickLunch} type="button">
               <Sparkles aria-hidden="true" size={16} /> {text.pickAnother}
@@ -760,22 +838,47 @@ function LunchRadar() {
 
       <section aria-label={text.filterLabel} className="filter-panel">
         <div className="filter-toolbar">
-          <div aria-label={text.maxWalk} className="walking-control" role="group">
-            <span className="filter-label"><Clock3 size={16} /> {text.maxWalk}</span>
-            <div className="segmented-control">
-              {['', '5', '10'].map((value) => (
-                <button
-                  aria-pressed={maxWalkingTime === value}
-                  className={maxWalkingTime === value ? 'is-selected' : ''}
-                  key={value || 'any'}
-                  onClick={() => setMaxWalkingTime(value)}
-                  type="button"
-                >
-                  {value ? `${value} ${text.minutes}` : text.any}
-                </button>
-              ))}
-            </div>
+          <div aria-label={text.travelModeLabel} className="travel-mode-control" role="group">
+            <button
+              aria-pressed={travelMode === 'walk'}
+              className={travelMode === 'walk' ? 'is-selected' : ''}
+              onClick={() => setTravelMode('walk')}
+              type="button"
+            >
+              <Clock3 size={15} /> {text.walk}
+            </button>
+            <button
+              aria-pressed={travelMode === 'drive'}
+              className={travelMode === 'drive' ? 'is-selected' : ''}
+              onClick={() => setTravelMode('drive')}
+              type="button"
+            >
+              <Car size={15} /> {text.drive}
+            </button>
           </div>
+          {travelMode === 'walk' ? (
+            <div aria-label={text.maxWalk} className="walking-control" role="group">
+              <span className="filter-label">{text.maxWalk}</span>
+              <div className="segmented-control">
+                {['', '5', '10'].map((value) => (
+                  <button
+                    aria-pressed={maxWalkingTime === value}
+                    className={maxWalkingTime === value ? 'is-selected' : ''}
+                    key={value || 'any'}
+                    onClick={() => setMaxWalkingTime(value)}
+                    type="button"
+                  >
+                    {value ? `${value} ${text.minutes}` : text.any}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div aria-label={text.maxDrive} className="walking-control driving-limit">
+              <span className="filter-label"><Car size={15} /> {text.maxDrive}</span>
+              <span className="drive-limit-value">10 {text.minutes}</span>
+            </div>
+          )}
           <div className="dietary-controls" aria-label={text.dietaryLabel}>
             <DietFilter checked={vegetarianOnly} icon={Leaf} label={text.vegetarian} onChange={(event) => setVegetarianOnly(event.target.checked)} />
             <DietFilter checked={veganOnly} icon={Vegan} label={text.vegan} onChange={(event) => setVeganOnly(event.target.checked)} />
@@ -847,6 +950,7 @@ function LunchRadar() {
                     picked={pickedId === restaurant.id}
                     restaurant={restaurant}
                     text={text}
+                    travelMode={travelMode}
                   />
                 </div>
               ))}
@@ -878,6 +982,7 @@ function LunchRadar() {
           onHighlightChange={setHighlightedRestaurantId}
           focusRestaurantId={selectedRadarRestaurantId}
           restaurants={filteredRestaurants}
+          travelMode={travelMode}
         />
       </div>
 
