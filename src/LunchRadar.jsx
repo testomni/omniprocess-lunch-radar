@@ -646,7 +646,7 @@ function LunchRadar() {
               <span className="eyebrow"><MapPin size={15} /> {text.heroEyebrow}</span>
               <h1>{text.heroTitlePrefix}<span className="hero-title-highlight">{text.heroTitleHighlight}</span>{text.heroTitleSuffix}</h1>
               <h2>{text.heroSubtitle}</h2>
-              <p>{text.heroDescription}</p>
+              <p>{travelMode === 'drive' ? text.heroDrivingDescription : text.heroDescription}</p>
               <p aria-live="polite" className="location-status">{text.locationStatus[locationStatus]}</p>
             </div>
             <div className="hero-action">
