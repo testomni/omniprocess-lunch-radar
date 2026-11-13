@@ -1,5 +1,5 @@
 const osrmTableEndpoint = 'https://router.project-osrm.org/table/v1/driving';
-const maxCoordinatesPerRequest = 100;
+const destinationsPerRequest = 24;
 const minimumRequestIntervalMs = 1000;
 let requestQueue = Promise.resolve();
 let nextRequestAt = 0;
@@ -15,12 +15,12 @@ function waitForRequestSlot(signal) {
   return slot;
 }
 
-export async function fetchDrivingTimes(origin, restaurants, { signal } = {}) {
+export async function fetchDrivingTimes(origin, restaurants, { signal, onProgress } = {}) {
   if (!restaurants.length) return [];
 
   const times = [];
-  for (let start = 0; start < restaurants.length; start += maxCoordinatesPerRequest - 1) {
-    const destinations = restaurants.slice(start, start + maxCoordinatesPerRequest - 1);
+  for (let start = 0; start < restaurants.length; start += destinationsPerRequest) {
+    const destinations = restaurants.slice(start, start + destinationsPerRequest);
     const coordinates = [
       `${origin.longitude},${origin.latitude}`,
       ...destinations.map(({ longitude, latitude }) => `${longitude},${latitude}`),
@@ -48,6 +48,7 @@ export async function fetchDrivingTimes(origin, restaurants, { signal } = {}) {
     times.push(...durations.map((seconds) => (
       Number.isFinite(seconds) ? Math.ceil(seconds / 60) : null
     )));
+    onProgress?.(times.slice(), { completed: times.length, total: restaurants.length });
   }
 
   return times;

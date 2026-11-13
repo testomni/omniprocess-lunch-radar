@@ -407,6 +407,7 @@ function LunchRadar() {
     async function loadNearbyRestaurants() {
       setRestaurants([]);
       setLocationStatus(travelMode === 'drive' ? 'loadingDrivingRoutes' : 'loadingRestaurants');
+      let receivedRouteResults = false;
       try {
         const nearbyRestaurants = await findNearbyRestaurants(
           location,
@@ -430,6 +431,14 @@ function LunchRadar() {
         setLocationStatus('calculatingDrivingTimes');
         const drivingTimes = await fetchDrivingTimes(location, nearbyRestaurants, {
           signal: routeRequestController.signal,
+          onProgress: (partialTimes, progress) => {
+            if (ignore) return;
+            receivedRouteResults = true;
+            setRestaurants(nearbyRestaurants.slice(0, progress.completed).map((restaurant, index) => ({
+              ...restaurant,
+              drivingTimeMinutes: partialTimes[index],
+            })));
+          },
         });
         if (ignore) return;
         setRestaurants(nearbyRestaurants.map((restaurant, index) => ({
@@ -440,7 +449,7 @@ function LunchRadar() {
       } catch (error) {
         if (ignore) return;
         console.error('Nearby restaurants could not be loaded for the selected travel mode.', error);
-        setRestaurants([]);
+        if (travelMode === 'walk' || !receivedRouteResults) setRestaurants([]);
         setLocationStatus(travelMode === 'drive' ? 'drivingUnavailable' : 'restaurantsUnavailable');
       }
     }
@@ -959,7 +968,12 @@ function LunchRadar() {
             <div className="empty-state">
               <span className="empty-icon"><Utensils size={22} /></span>
               <h3>{locationStatus === 'locating' || locationStatus === 'loadingRestaurants'
+                || locationStatus === 'loadingDrivingRoutes'
                 ? text.locationLoading
+                : locationStatus === 'calculatingDrivingTimes'
+                  ? text.locationStatus.calculatingDrivingTimes
+                  : locationStatus === 'drivingUnavailable'
+                    ? text.locationStatus.drivingUnavailable
                 : locationStatus === 'noNearbyRestaurants'
                   ? text.noNearbyRestaurants
                   : locationStatus === 'restaurantsUnavailable'
@@ -967,6 +981,8 @@ function LunchRadar() {
                     : text.noMatches}</h3>
               <p>{locationStatus === 'locating' || locationStatus === 'loadingRestaurants'
                 ? text.locationPermissionHint
+                : locationStatus === 'loadingDrivingRoutes' || locationStatus === 'calculatingDrivingTimes'
+                  ? text.drivingSearchLoadingHint
                 : locationStatus === 'noNearbyRestaurants' || locationStatus === 'restaurantsUnavailable'
                   ? text.nearbyRestaurantsHint
                   : text.adjustFilters}</p>
