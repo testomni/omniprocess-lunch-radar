@@ -755,12 +755,10 @@ function LunchRadar() {
                   </div>
                   <div className="weather-meta">
                     <span><Wind size={14} /> {weather.windSpeed.toFixed(1)} m/s</span>
-                    <span className={`weather-status ${weatherAdvice === 'good' ? 'is-good' : 'is-bad'}`}>
-                      {weatherAdvice === 'umbrella'
-                        ? text.weatherBad
-                        : weatherAdvice === 'notIdeal'
-                          ? text.weatherNotIdeal
-                          : text.weatherGood}
+                    <span className={`weather-status ${
+                      weatherAdvice === 'sunny' || weatherAdvice === 'cloudy' ? 'is-good' : 'is-bad'
+                    }`}>
+                      {text.weatherAdvice[weatherAdvice]}
                     </span>
                   </div>
                   {weather.hourlyForecast.length > 0 && (
