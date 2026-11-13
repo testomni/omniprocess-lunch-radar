@@ -142,6 +142,7 @@ function RestaurantCard({
     || googlePlace.reviews?.length
   ));
   const hasDedicatedMenu = Boolean(restaurant.menuUrl && restaurant.menuUrl !== restaurant.websiteUrl);
+  const hasDietaryDetails = restaurant.vegetarian || restaurant.vegan || restaurant.takeaway;
   return (
     <article
       className={`restaurant-card${picked ? ' is-picked' : ''}${highlighted ? ' is-map-highlighted' : ''}`}
@@ -185,22 +186,15 @@ function RestaurantCard({
           <span className="price">{restaurant.typicalLunchPriceSek == null ? text.priceUnknown : `~${restaurant.typicalLunchPriceSek} kr`}</span>
         </div>
 
-        <div className="restaurant-tags" aria-label={text.dietaryLabel}>
-          {restaurant.vegetarian && <span className="info-tag"><Leaf size={13} /> {text.vegetarian}</span>}
-          {restaurant.vegan && <span className="info-tag"><Vegan size={13} /> {text.vegan}</span>}
-          {restaurant.takeaway && (
-            <span className="info-tag"><Check size={13} /> {text.takeaway}</span>
-          )}
-          {[restaurant.vegetarian, restaurant.vegan, restaurant.takeaway]
-            .every((option) => option == null) && (
-            <span className="no-options">{text.dietaryUnknown}</span>
-          )}
-          {[restaurant.vegetarian, restaurant.vegan, restaurant.takeaway]
-            .some((option) => option == null)
-            && [restaurant.vegetarian, restaurant.vegan, restaurant.takeaway]
-              .some((option) => option != null)
-            && <span className="no-options">{text.dietaryPartial}</span>}
-        </div>
+        {hasDietaryDetails && (
+          <div className="restaurant-tags" aria-label={text.dietaryLabel}>
+            {restaurant.vegetarian && <span className="info-tag"><Leaf size={13} /> {text.vegetarian}</span>}
+            {restaurant.vegan && <span className="info-tag"><Vegan size={13} /> {text.vegan}</span>}
+            {restaurant.takeaway && (
+              <span className="info-tag"><Check size={13} /> {text.takeaway}</span>
+            )}
+          </div>
+        )}
 
         {hasGoogleReviewDetails && (
           <div className="google-review-panel">
@@ -235,9 +229,9 @@ function RestaurantCard({
         )}
 
         <div className="card-footer">
-          <span className="verified-date">{restaurant.lastVerified ? text.verified(formatDate(restaurant.lastVerified, {
+          {restaurant.lastVerified && <span className="verified-date">{text.verified(formatDate(restaurant.lastVerified, {
             day: 'numeric', month: 'short', year: 'numeric',
-          }, text.locale)) : text.unverified}</span>
+          }, text.locale))}</span>}
           <div className="card-links">
             <a href={hasDedicatedMenu ? restaurant.menuUrl : getMenuSearchUrl(restaurant)} rel="noreferrer" target="_blank">
               {hasDedicatedMenu ? text.menu : text.findMenu} <ArrowUpRight size={14} />
@@ -551,8 +545,6 @@ function LunchRadar() {
         ? `${text.googleReviewsUnavailable}${googleReviewsError ? ` ${googleReviewsError}` : ''}`
         : googleReviewsStatus === 'empty'
           ? text.googleReviewsNoResults
-          : googleReviewsStatus === 'unconfigured'
-            ? text.googleReviewsNotConfigured
             : '';
 
   const cuisines = useMemo(
@@ -931,9 +923,14 @@ function LunchRadar() {
 
           <p className="results-meta">
             <a href="https://www.openstreetmap.org/copyright" rel="noreferrer" target="_blank">{text.restaurantSource}</a>
-            <span /> {latestVerifiedDate
-              ? `${text.lastVerified} ${formatDate(latestVerifiedDate, { day: 'numeric', month: 'long', year: 'numeric' }, text.locale)}`
-              : text.noVerifiedInfo}
+            {latestVerifiedDate && (
+              <>
+                <span />
+                {text.lastVerified} {formatDate(latestVerifiedDate, {
+                  day: 'numeric', month: 'long', year: 'numeric',
+                }, text.locale)}
+              </>
+            )}
           </p>
 
           <p aria-live="polite" className="sr-only">{pickAnnouncement}</p>
