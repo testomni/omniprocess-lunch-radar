@@ -26,4 +26,4 @@ The app makes one nearby-place request per location and receives up to 20 result
 
 ## GitHub Pages
 
-The GitHub Actions workflow builds and deploys `main` to GitHub Pages at <https://testomni.github.io/omniprocess-lunch-radar/>. The page includes a `noindex` hint to discourage search engines. It is an unlisted public site, not password-protected: anyone with the URL can visit it. This separate GitHub Pages address does not change `omniprocess.se`.
+The GitHub Actions workflow builds and deploys `main` to GitHub Pages at <https://testomni.github.io/omni-lunch-radar/>. The page includes a `noindex` hint to discourage search engines. It is an unlisted public site, not password-protected: anyone with the URL can visit it. This separate GitHub Pages address does not change `omniprocess.se`.
